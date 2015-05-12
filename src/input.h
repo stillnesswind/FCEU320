@@ -1,9 +1,12 @@
 #ifndef _INPUT_H_
 #define _INPUT_H_
 
-#include <ostream>
 
 #include "git.h"
+
+#include <ostream>
+
+void LagCounterToggle(void);
 
 class MovieRecord;
 
@@ -67,7 +70,7 @@ struct INPUTCFC
 extern struct JOYPORT
 {
 	JOYPORT(int _w)
-		: w(_w) 
+		: w(_w)
 	{}
 
 	int w;
@@ -87,7 +90,6 @@ extern struct FCPORT
 	void* ptr;
 	INPUTCFC* driver;
 } portFC;
-
 
 void FCEU_DrawMouseCursor(uint8 *XBuf);
 void FCEU_DrawInput(uint8 *buf);
@@ -110,7 +112,7 @@ enum EMUCMD
 	EMUCMD_SCREENSHOT,
 	EMUCMD_HIDE_MENU_TOGGLE,
 	//fixed: current command key handling handle only command table record index with
-	//the same as cmd enumerarot index, or else does wrong key mapping, fixed it but placed this enum here anyway 
+	//the same as cmd enumerarot index, or else does wrong key mapping, fixed it but placed this enum here anyway
 	//...i returned it back.
 	//adelikat, try to find true cause of problem before reversing it
 	EMUCMD_EXIT,
@@ -201,10 +203,10 @@ enum EMUCMD
 	EMUCMD_MISC_DISPLAY_BG_TOGGLE,
 	EMUCMD_MISC_DISPLAY_OBJ_TOGGLE,
 	EMUCMD_MISC_DISPLAY_LAGCOUNTER_TOGGLE,
-	
-	EMUCMD_MISC_LAGCOUNTER_RESET,
+
 	//Currently Windows only------
-	EMUCMD_TOOL_OPENMEMORYWATCH, 
+	EMUCMD_MISC_OPENTASEDITOR,
+	EMUCMD_TOOL_OPENMEMORYWATCH,
 	EMUCMD_TOOL_OPENCHEATS,
 	EMUCMD_TOOL_OPENDEBUGGER,
 	EMUCMD_TOOL_OPENHEX,
@@ -216,12 +218,31 @@ enum EMUCMD
 	//Currently only windows (but sdl could easily add onto these)
 	EMUCMD_OPENROM,
 	EMUCMD_CLOSEROM,
+	EMUCMD_RELOAD,
 	//-----------------------------
 	EMUCMD_MISC_DISPLAY_MOVIESUBTITLES,
 	EMUCMD_MISC_UNDOREDOSAVESTATE,
 	EMUCMD_MISC_TOGGLEFULLSCREEN,
 	EMUCMD_TOOL_OPENRAMWATCH,
 	EMUCMD_TOOL_OPENRAMSEARCH,
+	EMUCMD_TOOL_RAMSEARCHLT,
+	EMUCMD_TOOL_RAMSEARCHGT,
+	EMUCMD_TOOL_RAMSEARCHLTE,
+	EMUCMD_TOOL_RAMSEARCHGTE,
+	EMUCMD_TOOL_RAMSEARCHEQ,
+	EMUCMD_TOOL_RAMSEARCHNE,
+	EMUCMD_TOOL_OPENNTVIEW,
+	EMUCMD_TASEDITOR_REWIND,
+	EMUCMD_RERECORD_DISPLAY_TOGGLE,
+	EMUCMD_TASEDITOR_RESTORE_PLAYBACK,
+	EMUCMD_TASEDITOR_CANCEL_SEEKING,
+	EMUCMD_TASEDITOR_SWITCH_AUTORESTORING,
+	EMUCMD_TASEDITOR_SWITCH_MULTITRACKING,
+	EMUCMD_TASEDITOR_RUN_MANUAL_LUA,
+	//-----------------------------
+	//keep adding these in order of newness or else the hotkey binding configs will get messed up...
+	EMUCMD_FPS_DISPLAY_TOGGLE,
+
 	EMUCMD_MAX
 };
 
@@ -236,6 +257,7 @@ enum EMUCMDTYPE
 	EMUCMDTYPE_FDS,
 	EMUCMDTYPE_VSUNI,
 	EMUCMDTYPE_TOOL,  //All Tools type are currenty windows only programs
+	EMUCMDTYPE_TASEDITOR,	// Windows-only as well
 
 	EMUCMDTYPE_MAX
 };
@@ -247,7 +269,7 @@ typedef void EMUCMDFN(void);
 enum EMUCMDFLAG
 {
 	EMUCMDFLAG_NONE = 0,
-	EMUCMDFLAG_TASEDIT = 1,
+	EMUCMDFLAG_TASEDITOR = 1,
 };
 
 struct EMUCMDTABLE
@@ -270,4 +292,3 @@ extern bool turbo;
 void LagCounterReset();
 
 #endif //_INPUT_H_
-

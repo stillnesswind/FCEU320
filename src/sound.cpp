@@ -18,11 +18,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-
-#include <string.h>
-
 #include "types.h"
 #include "x6502.h"
 
@@ -32,6 +27,10 @@
 #include "state.h"
 #include "wave.h"
 #include "debug.h"
+
+#include <cstdlib>
+#include <cstdio>
+#include <cstring>
 
 static uint32 wlookup1[32];
 static uint32 wlookup2[203];
@@ -153,7 +152,7 @@ static uint32 ChannelBC[5];
 //savestate sync hack stuff
 int movieSyncHackOn=0,resetDMCacc=0,movieConvertOffset1,movieConvertOffset2;
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 extern volatile int datacount, undefinedcount;
 extern int debug_loggingCD;
 extern unsigned char *cdloggerdata;
@@ -172,7 +171,7 @@ static void PrepDPCM()
  DMCAddress=0x4000+(DMCAddressLatch<<6);
  DMCSize=(DMCSizeLatch<<4)+1;
 
- #ifdef WIN32
+ #if defined(WIN32) && !defined(DINGUX)
  if(debug_loggingCD)LogDPCM(0x8000+DMCAddress, DMCSize);
  #endif
 
@@ -1168,7 +1167,7 @@ void FCEUSND_Reset(void)
 		if(resetDMCacc)
 		{
 			// no value in movie save state
-		#ifdef WIN32
+		#if defined(WIN32) && !defined(DINGUX)
 			// use editbox fields
 			DMCacc=movieConvertOffset1;
 			DMCBitCount=movieConvertOffset2;

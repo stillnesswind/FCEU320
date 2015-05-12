@@ -16,15 +16,14 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- */  
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
 #ifndef __FCEU_TYPES
 #define __FCEU_TYPES
 
 ///causes the code fragment argument to be compiled in if the build includes debugging
 #ifdef FCEUDEF_DEBUGGER
-HOLA
 #define DEBUG(X) X;
 #else
 #define DEBUG(X)
@@ -73,13 +72,14 @@ typedef uint32_t uint32;
 
 #ifdef __GNUC__
  typedef unsigned long long uint64;
+ typedef uint64 u64;
  typedef long long int64;
  #define INLINE inline
  #define GINLINE inline
 #elif MSVC
  typedef __int64 int64;
  typedef unsigned __int64 uint64;
- #define __restrict__ 
+ #define __restrict__
  #define INLINE __inline
  #define GINLINE			/* Can't declare a function INLINE
 					   and global in MSVC.  Bummer.
@@ -88,7 +88,7 @@ typedef uint32_t uint32;
 					   other than Windows/DOS targets?
 					*/
 
- #if _MSC_VER >= 1300 
+ #if _MSC_VER >= 1300
   #pragma warning(disable:4244) //warning C4244: '=' : conversion from 'uint32' to 'uint8', possible loss of data
   #pragma warning(disable:4996) //'strdup' was declared deprecated
 #endif
@@ -118,20 +118,24 @@ typedef uint32_t uint32;
 #define PSS ":"
 #define PS ':'
 
+#else
+
+#error PSS_STYLE undefined or invalid; see "types.h" for possible values, and add as compile-time option.
+
 #endif
 
 
 typedef void (*writefunc)(uint32 A, uint8 V);
 typedef uint8 (*readfunc)(uint32 A);
 
-#include "utils/endian.h"
-
 #ifndef CTASSERT
 #define CTASSERT(x)  typedef char __assert ## y[(x) ? 1 : -1];
 #endif
 
-// PUT THIS HERE?
-#ifdef DINGUX
+#include "utils/endian.h"
+
+// Detect if gcc supports wchar_t
+#ifndef _GLIBCXX_USE_WCHAR_T
 #define wstring string
 #endif
 

@@ -1,18 +1,18 @@
 #ifndef __DRIVER_H_
 #define __DRIVER_H_
 
-#include <stdio.h>
-#include <string>
-#include <iosfwd>
-
 #include "types.h"
 #include "git.h"
 #include "file.h"
 
+#include <cstdio>
+#include <cstring>
+#include <iosfwd>
+
 FILE *FCEUD_UTF8fopen(const char *fn, const char *mode);
 inline FILE *FCEUD_UTF8fopen(const std::string &n, const char *mode) { return FCEUD_UTF8fopen(n.c_str(),mode); }
-std::fstream* FCEUD_UTF8_fstream(const char *n, const char *m);
-inline std::fstream* FCEUD_UTF8_fstream(const std::string &n, const char *m) { return FCEUD_UTF8_fstream(n.c_str(),m); }
+EMUFILE_FILE* FCEUD_UTF8_fstream(const char *n, const char *m);
+inline EMUFILE_FILE* FCEUD_UTF8_fstream(const std::string &n, const char *m) { return FCEUD_UTF8_fstream(n.c_str(),m); }
 FCEUFILE* FCEUD_OpenArchiveIndex(ArchiveScanRecord& asr, std::string& fname, int innerIndex);
 FCEUFILE* FCEUD_OpenArchive(ArchiveScanRecord& asr, std::string& fname, std::string* innerFilename);
 ArchiveScanRecord FCEUD_ScanArchive(std::string fname);
@@ -77,6 +77,8 @@ void FCEUI_SetInputFC(ESIFC type, void *ptr, int attrib);
 void FCEUI_SetInputFourscore(bool attachFourscore);
 //tells whether a fourscore is attached
 bool FCEUI_GetInputFourscore();
+//tells whether the microphone is used
+bool FCEUI_GetInputMicrophone();
 
 void FCEUI_UseInputPreset(int preset);
 
@@ -94,11 +96,11 @@ void FCEUI_SetRenderPlanes(bool sprites, bool bg);
 void FCEUI_GetRenderPlanes(bool& sprites, bool& bg);
 
 //name=path and file to load.  returns null if it failed
-FCEUGI *FCEUI_LoadGame(const char *name, int OverwriteVidMode);
+FCEUGI *FCEUI_LoadGame(const char *name, int OverwriteVidMode, bool silent = false);
 
-//same as FCEUI_LoadGame, except that it can load from a tempfile. 
+//same as FCEUI_LoadGame, except that it can load from a tempfile.
 //name is the logical path to open; archiveFilename is the archive which contains name
-FCEUGI *FCEUI_LoadGameVirtual(const char *name, int OverwriteVidMode);
+FCEUGI *FCEUI_LoadGameVirtual(const char *name, int OverwriteVidMode, bool silent = false);
 
 //general purpose emulator initialization. returns true if successful
 bool FCEUI_Initialize();
@@ -159,15 +161,15 @@ int FCEUI_SelectState(int, int);
 extern void FCEUI_SelectStateNext(int);
 
 //"fname" overrides the default save state filename code if non-NULL.
-void FCEUI_SaveState(const char *fname);
-void FCEUI_LoadState(const char *fname);
+void FCEUI_SaveState(const char *fname, bool display_message=true);
+void FCEUI_LoadState(const char *fname, bool display_message=true);
 
 void FCEUD_SaveStateAs(void);
 void FCEUD_LoadStateFrom(void);
 
 //at the minimum, you should call FCEUI_SetInput, FCEUI_SetInputFC, and FCEUI_SetInputFourscore
 //you may also need to maintain your own internal state
-void FCEUD_SetInput(bool fourscore, ESI port0, ESI port1, ESIFC fcexp);
+void FCEUD_SetInput(bool fourscore, bool microphone, ESI port0, ESI port1, ESIFC fcexp);
 
 
 void FCEUD_MovieRecordTo(void);
@@ -176,7 +178,8 @@ void FCEUD_LuaRunFrom(void);
 
 int32 FCEUI_GetDesiredFPS(void);
 void FCEUI_SaveSnapshot(void);
-void FCEU_DispMessage(char *format, ...);
+void FCEUI_SaveSnapshotAs(void);
+void FCEU_DispMessage(char *format, int disppos, ...);
 #define FCEUI_DispMessage FCEU_DispMessage
 
 int FCEUI_DecodePAR(const char *code, int *a, int *v, int *c, int *type);
@@ -200,15 +203,15 @@ void FCEUI_CheatSearchSetCurrentAsOriginal(void);
 
 //.rom
 #define FCEUIOD_ROMS    0	//Roms
-#define FCEUIOD_NV      1	//NV = nonvolatile. save data.	
-#define FCEUIOD_STATES  2	//savestates	
+#define FCEUIOD_NV      1	//NV = nonvolatile. save data.
+#define FCEUIOD_STATES  2	//savestates
 #define FCEUIOD_FDSROM  3	//disksys.rom
 #define FCEUIOD_SNAPS   4	//screenshots
 #define FCEUIOD_CHEATS  5	//cheats
 #define FCEUIOD_MOVIES  6	//.fm2 files
 #define FCEUIOD_MEMW    7	//memory watch fiels
 #define FCEUIOD_BBOT    8	//basicbot, obsolete
-#define FCEUIOD_MACRO   9	//macro files - tasedit, currently not implemented
+#define FCEUIOD_MACRO   9	//macro files - old TASEdit v0.1 paradigm, not implemented, probably obsolete
 #define FCEUIOD_INPUT   10	//input presets
 #define FCEUIOD_LUA     11	//lua scripts
 #define FCEUIOD_AVI		12	//default file for avi output
@@ -226,7 +229,6 @@ void FCEUI_GetIVectors(uint16 *reset, uint16 *irq, uint16 *nmi);
 
 uint32 FCEUI_CRC32(uint32 crc, uint8 *buf, uint32 len);
 
-void FCEUI_ToggleTileView(void);
 void FCEUI_SetLowPass(int q);
 
 void FCEUI_NSFSetVis(int mode);
@@ -239,7 +241,6 @@ uint8 FCEUI_VSUniGetDIPs(void);
 void FCEUI_VSUniSetDIP(int w, int state);
 void FCEUI_VSUniCoin(void);
 
-void FCEUI_FDSFlip(void);
 void FCEUI_FDSInsert(void); //mbg merge 7/17/06 changed to void fn(void) to make it an EMUCMDFN
 //int FCEUI_FDSEject(void);
 void FCEUI_FDSSelect(void);
@@ -272,6 +273,8 @@ void FCEUI_AviEnd(void);
 void FCEUI_AviVideoUpdate(const unsigned char* buffer);
 void FCEUI_AviSoundUpdate(void* soundData, int soundLen);
 bool FCEUI_AviIsRecording();
+bool FCEUI_AviEnableHUDrecording();
+void FCEUI_SetAviEnableHUDrecording(bool enable);
 bool FCEUI_AviDisableMovieMessages();
 void FCEUI_SetAviDisableMovieMessages(bool disable);
 
@@ -308,10 +311,10 @@ void FCEUD_CmdOpen(void);
 //new merge-era driver routines here:
 
 ///signals that the cpu core hit a breakpoint. this function should not return until the core is ready for the next cycle
-void FCEUD_DebugBreakpoint();
+void FCEUD_DebugBreakpoint(int bp_num);
 
 ///the driver should log the current instruction, if it wants (we should move the code in the win driver that does this to the shared area)
-void FCEUD_TraceInstruction();
+void FCEUD_TraceInstruction(uint8 *opcode, int size);
 
 ///the driver might should update its NTView (only used if debugging support is compiled in)
 void FCEUD_UpdateNTView(int scanline, bool drawall);
@@ -331,8 +334,8 @@ enum EFCEUI
 	FCEUI_NEXTSAVESTATE,FCEUI_PREVIOUSSAVESTATE,FCEUI_VIEWSLOTS,
 	FCEUI_STOPMOVIE, FCEUI_RECORDMOVIE, FCEUI_PLAYMOVIE,
 	FCEUI_OPENGAME, FCEUI_CLOSEGAME,
-	FCEUI_TASEDIT,
-	FCEUI_RESET, FCEUI_POWER,FCEUI_PLAYFROMBEGINNING
+	FCEUI_TASEDITOR,
+	FCEUI_RESET, FCEUI_POWER, FCEUI_PLAYFROMBEGINNING, FCEUI_EJECT_DISK, FCEUI_SWITCH_DISK, FCEUI_INSERT_COIN
 };
 
 //checks whether an EFCEUI is valid right now

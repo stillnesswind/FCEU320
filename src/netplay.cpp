@@ -15,18 +15,9 @@
 *
 * You should have received a copy of the GNU General Public License
 * along with this program; if not, write to the Free Software
-* Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-//#include <unistd.h> //mbg merge 7/17/06 removed
-
-#include <zlib.h>
 
 #include "types.h"
 #include "file.h"
@@ -37,6 +28,16 @@
 #include "cheat.h"
 #include "input.h"
 #include "driver.h"
+#include "utils/memory.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <sys/types.h>
+#include <sys/stat.h>
+//#include <unistd.h> //mbg merge 7/17/06 removed
+
+#include <zlib.h>
 
 int FCEUnetplay=0;
 
@@ -50,7 +51,7 @@ static int netdcount;
 
 static void NetError(void)
 {
-	FCEU_DispMessage("Network error/connection lost!");
+	FCEU_DispMessage("Network error/connection lost!",0);
 	FCEUD_NetworkClose();
 }
 
@@ -69,7 +70,7 @@ int FCEUI_NetplayStart(int nlocal, int divisor)
 {
 	FCEU_FlushGameCheats(0, 0);  //Save our pre-netplay cheats.
 	FCEU_LoadGameCheats(0);    // Load them again, for pre-multiplayer action.
-	
+
 	FCEUnetplay = 1;
 	memset(netjoy,0,sizeof(netjoy));
 	numlocal = nlocal;
@@ -88,7 +89,7 @@ int FCEUNET_SendCommand(uint8 cmd, uint32 len)
 	buf[0] = 0xFF;
 	FCEU_en32lsb(&buf[numlocal], len);
 	buf[numlocal + 4] = cmd;
-	if(!FCEUD_SendData(buf,numlocal + 1 + 4)) 
+	if(!FCEUD_SendData(buf,numlocal + 1 + 4))
 	{
 		NetError();
 		return(0);
@@ -120,11 +121,11 @@ int FCEUNET_SendFile(uint8 cmd, char *fn)
 
 	fstat(fileno(fp),&sb);
 	len = sb.st_size;
-	buf = (char*)malloc(len); //mbg merge 7/17/06 added cast
+	buf = (char*)FCEU_dmalloc(len); //mbg merge 7/17/06 added cast
 	fread(buf, 1, len, fp);
 	fclose(fp);
 
-	cbuf = (char*)malloc(4 + len + len / 1000 + 12); //mbg merge 7/17/06 added cast
+	cbuf = (char*)FCEU_dmalloc(4 + len + len / 1000 + 12); //mbg merge 7/17/06 added cast
 	FCEU_en32lsb((uint8*)cbuf, len); //mbg merge 7/17/06 added cast
 	compress2((uint8*)cbuf + 4, &clen, (uint8*)buf, len, 7); //mbg merge 7/17/06 added casts
 	free(buf);
@@ -154,7 +155,7 @@ static FILE *FetchFile(uint32 remlen)
 	uint32 clen = remlen;
 	char *cbuf;
 	uLongf len;
-	char *buf;  
+	char *buf;
 	FILE *fp;
 
 	if(clen > 500000)  // Sanity check
@@ -164,9 +165,9 @@ static FILE *FetchFile(uint32 remlen)
 	}
 
 	//printf("Receiving file: %d...\n",clen);
-	if(fp = tmpfile())
+	if((fp = tmpfile()))
 	{
-		cbuf = (char *)malloc(clen); //mbg merge 7/17/06 added cast
+		cbuf = (char *)FCEU_dmalloc(clen); //mbg merge 7/17/06 added cast
 		if(!FCEUD_RecvData(cbuf, clen))
 		{
 			NetError();
@@ -183,7 +184,7 @@ static FILE *FetchFile(uint32 remlen)
 			free(cbuf);
 			return(0);
 		}
-		buf = (char *)malloc(len); //mbg merge 7/17/06 added cast
+		buf = (char *)FCEU_dmalloc(len); //mbg merge 7/17/06 added cast
 		uncompress((uint8*)buf, &len, (uint8*)cbuf + 4, clen - 4); //mbg merge 7/17/06 added casts
 
 		fwrite(buf, 1, len, fp);
@@ -202,7 +203,7 @@ void NetplayUpdate(uint8 *joyp)
 	memcpy(joypb,joyp,4);
 
 	/* This shouldn't happen, but just in case.  0xFF is used as a command escape elsewhere. */
-	if(joypb[0] == 0xFF) 
+	if(joypb[0] == 0xFF)
 		joypb[0] = 0xF;
 	if(!netdcount)
 		if(!FCEUD_SendData(joypb,numlocal))
@@ -246,7 +247,7 @@ void NetplayUpdate(uint8 *joyp)
 					free(tbuf);
 				}
 				break;
-			case FCEUNPCMD_SAVESTATE:	
+			case FCEUNPCMD_SAVESTATE:
 				{
 					//mbg todo netplay
 					//char *fn;
@@ -309,8 +310,8 @@ void NetplayUpdate(uint8 *joyp)
 				if(!fp) return;
 				if(FCEUSS_LoadFP(fp,SSLOADPARAM_BACKUP))
 			 {
-			 fclose(fp);				
-			 FCEU_DispMessage("Remote state loaded.");
+			 fclose(fp);
+			 FCEU_DispMessage("Remote state loaded.",0);
 			 } else FCEUD_PrintError("File error.  (K)ill, (M)aim, (D)estroy?");
 			 }
 			 break;*/

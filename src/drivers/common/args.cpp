@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 /****************************************************************/
@@ -33,9 +33,10 @@
 #include "../../types.h"
 #include "args.h"
 
-void ParseEA(int x, int argc, char *argv[], ARGPSTRUCT *argsps)
+int ParseEA(int x, int argc, char *argv[], ARGPSTRUCT *argsps)
 {
 	int y=0;
+	int ret=1;
 
 	do
 	{
@@ -47,10 +48,12 @@ void ParseEA(int x, int argc, char *argv[], ARGPSTRUCT *argsps)
 		}
 		if(!strcmp(argv[x],argsps[y].name))	// A match.
 		{
+			//ret++;
 			if(argsps[y].subs)
 			{
 				if((x+1)>=argc)
 					break;
+				ret++;
 				if(argsps[y].substype&0x2000)
 				{
 					((void (*)(char *))argsps[y].subs)(argv[x+1]);
@@ -86,13 +89,20 @@ void ParseEA(int x, int argc, char *argv[], ARGPSTRUCT *argsps)
 		}
 		y++;
 	} while(argsps[y].var || argsps[y].subs);
+	return ret;
 }
 
-void ParseArguments(int argc, char *argv[], ARGPSTRUCT *argsps)
+int ParseArguments(int argc, char *argv[], ARGPSTRUCT *argsps)
 {
  int x;
 
- for(x=0;x<argc;x++)
-  ParseEA(x,argc,argv,argsps);
+ for(x=0;x<argc;)
+ {
+  int temp = ParseEA(x,argc,argv,argsps);
+  if(temp == 1 && x==argc-1)
+	  return argc-1;
+  x += temp;
+ }
+ return argc;
 }
 

@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 /*        Various macros for faster memory stuff
@@ -29,3 +29,8 @@ void *FCEU_gmalloc(uint32 size);
 void FCEU_gfree(void *ptr);
 void FCEU_free(void *ptr);
 void FCEU_memmove(void *d, void *s, uint32 l);
+
+// wrapper for debugging when its needed, otherwise act like
+// normal malloc/free
+void *FCEU_dmalloc(uint32 size);
+void FCEU_dfree(void *ptr);

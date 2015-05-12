@@ -15,10 +15,10 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-int InitBlitToHigh(int b, uint32 rmask, uint32 gmask, uint32 bmask, int eefx, int specfilt);
+int InitBlitToHigh(int b, uint32 rmask, uint32 gmask, uint32 bmask, int eefx, int specfilt, int specfilteropt);
 void SetPaletteBlitToHigh(uint8 *src);
 void KillBlitToHigh(void);
 void Blit8ToHigh(uint8 *src, uint8 *dest, int xr, int yr, int pitch, int xscale, int yscale);

@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 enum ENUM_SSLOADPARAMS
@@ -24,13 +24,13 @@ enum ENUM_SSLOADPARAMS
 	SSLOADPARAM_BACKUP,
 };
 
-void FCEUSS_Save(const char *);
-bool FCEUSS_Load(const char *);
+void FCEUSS_Save(const char *, bool display_message=true);
+bool FCEUSS_Load(const char *, bool display_message=true);
 
  //zlib values: 0 (none) through 9 (max) or -1 (default)
-bool FCEUSS_SaveMS(std::ostream* outstream, int compressionLevel);
+bool FCEUSS_SaveMS(EMUFILE* outstream, int compressionLevel);
 
-bool FCEUSS_LoadFP(std::istream* is, ENUM_SSLOADPARAMS params);
+bool FCEUSS_LoadFP(EMUFILE* is, ENUM_SSLOADPARAMS params);
 
 extern int CurrentState;
 void FCEUSS_CheckStates(void);
@@ -73,4 +73,7 @@ extern bool redoSS;					 //redo savestate flag
 extern char lastLoadstateMade[2048]; //Filename of last state loaded
 extern bool undoLS;					 //undo loadstate flag
 extern bool redoLS;					 //redo savestate flag
+extern bool backupSavestates;		 //Whether or not to make backups, true by default
 bool CheckBackupSaveStateExist();	 //Checks if backupsavestate exists
+
+extern bool compressSavestates;		//Whether or not to compress non-movie savestates (by default, yes)

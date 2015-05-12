@@ -15,22 +15,8 @@
 *
 * You should have received a copy of the GNU General Public License
 * along with this program; if not, write to the Free Software
-* Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
-
-#ifndef WIN32
-#include <stdint.h>
-#endif
-
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <zlib.h>
-
-#ifdef _USE_SHARED_MEMORY_
-#include <windows.h>
-#endif
 
 #include "types.h"
 #include "video.h"
@@ -50,9 +36,25 @@
 #include "fceulua.h"
 #endif
 
+#if defined(WIN32) && !defined(DINGUX)
+#include "drivers/win/common.h" //For DirectX constants
+#include "drivers/win/input.h"
+#endif
+
 #ifdef CREATE_AVI
 #include "drivers/videolog/nesvideos-piece.h"
 #endif
+
+//no stdint in win32 (but we could add it if we needed to)
+#ifndef WIN32
+#include <stdint.h>
+#endif
+
+#include <cstring>
+#include <cstdio>
+#include <cstdlib>
+#include <cstdarg>
+#include <zlib.h>
 
 uint8 *XBuf=NULL;
 uint8 *XBackBuf=NULL;
@@ -66,9 +68,14 @@ GUIMESSAGE subtitleMessage;
 extern int input_display;
 extern uint32 cur_input_display;
 
-#ifdef _USE_SHARED_MEMORY_
-HANDLE mapXBuf;
-#endif
+bool oldInputDisplay = false;
+
+unsigned int lastu = 0;
+
+std::string AsSnapshotName ="";			//adelikat:this will set the snapshot name when for s savesnapshot as function
+
+void FCEUI_SetSnapshotAsName(std::string name) { AsSnapshotName = name; }
+std::string FCEUI_GetSnapshotAsName() { return AsSnapshotName; }
 
 void FCEU_KillVirtualVideo(void)
 {
@@ -102,37 +109,11 @@ int FCEU_InitVirtualVideo(void)
 		/* 256 bytes per scanline, * 240 scanline maximum, +16 for alignment,
 		*/
 
-#ifdef _USE_SHARED_MEMORY_
-
-		mapXBuf  = CreateFileMapping((HANDLE)0xFFFFFFFF,NULL,PAGE_READWRITE, 0, 256 * 256 + 16, "fceu.XBuf");
-
-	if(mapXBuf == NULL || GetLastError() == ERROR_ALREADY_EXISTS)
-	{
-		CloseHandle(mapXBuf);
-		mapXBuf = NULL;
-		XBuf = (uint8*) (FCEU_malloc(256 * 256 + 16));
-		XBackBuf = (uint8*) (FCEU_malloc(256 * 256 + 16));
-	}
-	else
-	{
-		XBuf = (uint8 *)MapViewOfFile(mapXBuf, FILE_MAP_WRITE, 0, 0, 0);
-		XBackBuf = (uint8*) (FCEU_malloc(256 * 256 + 16));
-	}
-
-	if (!XBuf || !XBackBuf)
-	{
-		return 0;
-	}
-
-#else
-
 		if(!(XBuf= (uint8*) (FCEU_malloc(256 * 256 + 16))) ||
 			!(XBackBuf= (uint8*) (FCEU_malloc(256 * 256 + 16))))
 		{
 			return 0;
 		}
-
-#endif //_USE_SHARED_MEMORY_
 
 		xbsave = XBuf;
 
@@ -149,16 +130,10 @@ int FCEU_InitVirtualVideo(void)
 		return 1;
 }
 
-
 #ifdef FRAMESKIP
-
-//#define SHOWFPS
-void ShowFPS(void);
 void FCEU_PutImageDummy(void)
 {
-#ifdef SHOWFPS
 	ShowFPS();
-#endif
 	if(GameInfo->type!=GIT_NSF)
 	{
 		FCEU_DrawNTSCControlBars(XBuf);
@@ -175,36 +150,44 @@ void FCEUI_SaveSnapshot(void)
 	dosnapsave=1;
 }
 
-
+void FCEUI_SaveSnapshotAs(void)
+{
+	dosnapsave=2;
+}
 
 static void ReallySnap(void)
 {
 	int x=SaveSnapshot();
 	if(!x)
-		//FCEU_DispMessage("Error saving screen snapshot.");
-		;
+		FCEU_DispMessage("Error saving screen snapshot.",0);
 	else
-		//FCEU_DispMessage("Screen snapshot %d saved.",x-1);
-		;
+		FCEU_DispMessage("Screen snapshot %d saved.",0,x-1);
 }
 
 void FCEU_PutImage(void)
 {
-#ifdef SHOWFPS
-	ShowFPS();
-#endif
-
+	if(dosnapsave==2)	//Save screenshot as, currently only flagged & run by the Win32 build. //TODO SDL: implement this?
+	{
+		char nameo[512];
+		strcpy(nameo,FCEUI_GetSnapshotAsName().c_str());
+		if (nameo[0])
+		{
+			SaveSnapshot(nameo);
+			FCEU_DispMessage("Snapshot Saved.",0);
+		}
+		dosnapsave=0;
+	}
 	if(GameInfo->type==GIT_NSF)
 	{
 		DrawNSF(XBuf);
 
 		//Save snapshot after NSF screen is drawn.  Why would we want to do it before?
-		if(dosnapsave)
+		if(dosnapsave==1)
 		{
 			ReallySnap();
 			dosnapsave=0;
 		}
-	} 
+	}
 	else
 	{
 		//Save backbuffer before overlay stuff is written.
@@ -214,21 +197,20 @@ void FCEU_PutImage(void)
 		//Some messages need to be displayed before the avi is dumped
 		DrawMessage(true);
 
-		#ifdef _S9XLUA_H
-		//Lua gui should draw before the avi is dumped.
+#ifdef _S9XLUA_H
+		// Lua gui should draw before the avi is dumped.
 		FCEU_LuaGui(XBuf);
-		#endif
+#endif
 
-		//Update AVI before overlay stuff is written
-		if(!FCEUI_EmulationPaused())
-			FCEUI_AviVideoUpdate(XBuf);
-
-		//Save snapshot before overlay stuff is written.
-		if(dosnapsave)
+		//Save snapshot
+		if(dosnapsave==1)
 		{
 			ReallySnap();
 			dosnapsave=0;
 		}
+
+		if (!FCEUI_AviEnableHUDrecording()) snapAVI();
+
 		if(GameInfo->type==GIT_VSUNI)
 			FCEU_VSUniDraw(XBuf);
 
@@ -239,11 +221,9 @@ void FCEU_PutImage(void)
 #ifdef DINGUX
         FCEU_DrawMouseCursor(XBuf);
 #endif
-        // TODO - test this ...
-		// FCEU_DrawRecordingStatus(XBuf);
+		FCEU_DrawRecordingStatus(XBuf);
+		ShowFPS();
 	}
-
-	DrawMessage(false);
 
 	if(FCEUD_ShouldDrawInputAids())
 		FCEU_DrawInput(XBuf);
@@ -251,9 +231,18 @@ void FCEU_PutImage(void)
 	//Fancy input display code
 	if(input_display)
 	{
-		int controller, c, color;
+		extern uint32 JSAutoHeld;
+		uint32 held;
+
+		int controller, c, ci, color;
 		int i, j;
-		uint8 *t = XBuf+(FSettings.LastSLine-9)*256 + 20; //mbg merge 7/17/06 changed t to uint8*
+		uint32 on  = FCEUMOV_Mode(MOVIEMODE_PLAY) ? 0x90:0xA7;	//Standard, or Gray depending on movie mode
+		uint32 oni = 0xA0;		//Color for immediate keyboard buttons
+		uint32 blend = 0xB6;		//Blend of immiate and last held buttons
+		uint32 ahold = 0x87;		//Auto hold
+		uint32 off = 0xCF;
+
+		uint8 *t = XBuf+(FSettings.LastSLine-9)*256 + 20;		//mbg merge 7/17/06 changed t to uint8*
 		if(input_display > 4) input_display = 4;
 		for(controller = 0; controller < input_display; controller++, t += 56)
 		{
@@ -264,9 +253,32 @@ void FCEU_PutImage(void)
 				for(j = 3; j< 6; j++)
 					t[i+j*256] = 0xCF;
 			c = cur_input_display >> (controller * 8);
-			c &= 255;
+
+			// This doesn't work in anything except windows for now.
+			// It doesn't get set anywhere in other ports.
+#if defined(WIN32) && !defined(DINGUX)
+			if (!oldInputDisplay) ci = FCEUMOV_Mode(MOVIEMODE_PLAY) ? 0:GetGamepadPressedImmediate() >> (controller * 8);
+			else ci = 0;
+
+			if (!oldInputDisplay && !FCEUMOV_Mode(MOVIEMODE_PLAY)) held = (JSAutoHeld >> (controller * 8));
+			else held = 0;
+#else
+			// Put other port info here
+			ci = 0;
+			held = 0;
+#endif
+
+			//adelikat: I apologize to anyone who ever sifts through this color assignment
 			//A
-			color = c&1?0xA7:0xCF;
+			if (held&1)	{ //If auto-hold
+				if (!(ci&1) ) color = ahold;
+				else
+					color = (c&1) ? on : off; //If the button is pressed down (immediate) that negates auto hold, however it is only off if the previous frame the button wasn't pressed!
+			}
+			else {
+				if (c&1) color = (ci&1) ? blend : on;	//If immedaite buttons are pressed and they match the previous frame, blend the colors
+				else color = (ci&1) ? oni : off;
+			}
 			for(i=0; i < 4; i++)
 			{
 				for(j = 0; j < 4; j++)
@@ -277,7 +289,15 @@ void FCEU_PutImage(void)
 				}
 			}
 			//B
-			color = c&2?0xA7:0xCF;
+			if (held&2)	{ //If auto-hold
+				if (!(ci&2) ) color = ahold;
+				else
+					color = (c&2) ? on : off; //If the button is pressed down (immediate) that negates auto hold, however it is only off if the previous frame the button wasn't pressed!
+			}
+			else {
+				if (c&2) color = (ci&2) ? blend : on;	//If immedaite buttons are pressed and they match the previous frame, blend the colors
+				else color = (ci&2) ? oni : off;
+			}
 			for(i=0; i < 4; i++)
 			{
 				for(j = 0; j < 4; j++)
@@ -288,21 +308,45 @@ void FCEU_PutImage(void)
 				}
 			}
 			//Select
-			color = c&4?0xA7:0xCF;
+			if (held&4)	{ //If auto-hold
+				if (!(ci&4) ) color = ahold;
+				else
+					color = (c&4) ? on : off; //If the button is pressed down (immediate) that negates auto hold, however it is only off if the previous frame the button wasn't pressed!
+			}
+			else {
+				if (c&4) color = (ci&4) ? blend : on;	//If immedaite buttons are pressed and they match the previous frame, blend the colors
+				else color = (ci&4) ? oni : off;
+			}
 			for(i = 0; i < 4; i++)
 			{
 				t[11+5*256+i] = color;
 				t[11+6*256+i] = color;
 			}
 			//Start
-			color = c&8?0xA7:0xCF;
+			if (held&8)	{ //If auto-hold
+				if (!(ci&8) ) color = ahold;
+				else
+					color = (c&8) ? on : off; //If the button is pressed down (immediate) that negates auto hold, however it is only off if the previous frame the button wasn't pressed!
+			}
+			else {
+				if (c&8) color = (ci&8) ? blend : on;	//If immedaite buttons are pressed and they match the previous frame, blend the colors
+				else color = (ci&8) ? oni : off;
+			}
 			for(i = 0; i < 4; i++)
 			{
 				t[17+5*256+i] = color;
 				t[17+6*256+i] = color;
 			}
 			//Up
-			color = c&16?0xA7:0xCF;
+			if (held&16)	{ //If auto-hold
+				if (!(ci&16) ) color = ahold;
+				else
+					color = (c&16) ? on : off; //If the button is pressed down (immediate) that negates auto hold, however it is only off if the previous frame the button wasn't pressed!
+			}
+			else {
+				if (c&16) color = (ci&16) ? blend : on;	//If immedaite buttons are pressed and they match the previous frame, blend the colors
+				else color = (ci&16) ? oni : off;
+			}
 			for(i = 0; i < 3; i++)
 			{
 				for(j = 0; j < 3; j++)
@@ -311,7 +355,15 @@ void FCEU_PutImage(void)
 				}
 			}
 			//Down
-			color = c&32?0xA7:0xCF;
+			if (held&32)	{ //If auto-hold
+				if (!(ci&32) ) color = ahold;
+				else
+					color = (c&32) ? on : off; //If the button is pressed down (immediate) that negates auto hold, however it is only off if the previous frame the button wasn't pressed!
+			}
+			else {
+				if (c&32) color = (ci&32) ? blend : on;	//If immedaite buttons are pressed and they match the previous frame, blend the colors
+				else color = (ci&32) ? oni : off;
+			}
 			for(i = 0; i < 3; i++)
 			{
 				for(j = 0; j < 3; j++)
@@ -320,7 +372,15 @@ void FCEU_PutImage(void)
 				}
 			}
 			//Left
-			color = c&64?0xA7:0xCF;
+			if (held&64)	{ //If auto-hold
+				if (!(ci&64) ) color = ahold;
+				else
+					color = (c&64) ? on : off; //If the button is pressed down (immediate) that negates auto hold, however it is only off if the previous frame the button wasn't pressed!
+			}
+			else {
+				if (c&64) color = (ci&64) ? blend : on;	//If immedaite buttons are pressed and they match the previous frame, blend the colors
+				else color = (ci&64) ? oni : off;
+			}
 			for(i = 0; i < 3; i++)
 			{
 				for(j = 0; j < 3; j++)
@@ -329,7 +389,15 @@ void FCEU_PutImage(void)
 				}
 			}
 			//Right
-			color = c&128?0xA7:0xCF;
+			if (held&128)	{ //If auto-hold
+				if (!(ci&128) ) color = ahold;
+				else
+					color = (c&128) ? on : off; //If the button is pressed down (immediate) that negates auto hold, however it is only off if the previous frame the button wasn't pressed!
+			}
+			else {
+				if (c&128) color = (ci&128) ? blend : on;	//If immedaite buttons are pressed and they match the previous frame, blend the colors
+				else color = (ci&128) ? oni : off;
+			}
 			for(i = 0; i < 3; i++)
 			{
 				for(j = 0; j < 3; j++)
@@ -339,6 +407,26 @@ void FCEU_PutImage(void)
 			}
 		}
 	}
+
+	if (FCEUI_AviEnableHUDrecording())
+	{
+		if (FCEUI_AviDisableMovieMessages())
+		{
+			snapAVI();
+			DrawMessage(false);
+		} else
+		{
+			DrawMessage(false);
+			snapAVI();
+		}
+	} else DrawMessage(false);
+
+}
+void snapAVI()
+{
+	//Update AVI
+	if(!FCEUI_EmulationPaused())
+		FCEUI_AviVideoUpdate(XBuf);
 }
 
 void FCEU_DispMessageOnMovie(char *format, ...)
@@ -351,21 +439,32 @@ void FCEU_DispMessageOnMovie(char *format, ...)
 
 	guiMessage.howlong = 180;
 	guiMessage.isMovieMessage = true;
+	guiMessage.linesFromBottom = 0;
+
 	if (FCEUI_AviIsRecording() && FCEUI_AviDisableMovieMessages())
 		guiMessage.howlong = 0;
 }
 
-void FCEU_DispMessage(char *format, ...)
+void FCEU_DispMessage(char *format, int disppos=0, ...)
 {
 	va_list ap;
 
-	va_start(ap,format);
+	va_start(ap,disppos);
 	vsnprintf(guiMessage.errmsg,sizeof(guiMessage.errmsg),format,ap);
 	va_end(ap);
+	// also log messages
+	char temp[2048];
+	va_start(ap,disppos);
+	vsnprintf(temp,sizeof(temp),format,ap);
+	va_end(ap);
+	strcat(temp, "\n");
+	FCEU_printf(temp);
 
 	guiMessage.howlong = 180;
 	guiMessage.isMovieMessage = false;
-	
+
+	guiMessage.linesFromBottom = disppos;
+
 	//adelikat: Pretty sure this code fails, Movie playback stopped is done with FCEU_DispMessageOnMovie()
 	#ifdef CREATE_AVI
 	if(LoggingEnabled == 2)
@@ -383,6 +482,7 @@ void FCEU_ResetMessages()
 {
 	guiMessage.howlong = 0;
 	guiMessage.isMovieMessage = false;
+	guiMessage.linesFromBottom = 0;
 }
 
 
@@ -420,11 +520,36 @@ static int WritePNGChunk(FILE *fp, uint32 size, char *type, uint8 *data)
 	return 1;
 }
 
+uint32 GetScreenPixel(int x, int y, bool usebackup) {
+
+	uint8 r,g,b;
+
+	if (((x < 0) || (x > 255)) || ((y < 0) || (y > 255)))
+		return -1;
+
+	if (usebackup)
+		FCEUD_GetPalette(XBackBuf[(y*256)+x],&r,&g,&b);
+	else
+		FCEUD_GetPalette(XBuf[(y*256)+x],&r,&g,&b);
+
+
+	return ((int) (r) << 16) | ((int) (g) << 8) | (int) (b);
+}
+
+int GetScreenPixelPalette(int x, int y, bool usebackup) {
+
+	if (((x < 0) || (x > 255)) || ((y < 0) || (y > 255)))
+		return -1;
+
+	if (usebackup)
+		return XBackBuf[(y*256)+x] & 0x3f;
+	else
+		return XBuf[(y*256)+x] & 0x3f;
+
+}
+
 int SaveSnapshot(void)
 {
-	unsigned int lastu=0;
-
-	char *fn=0;
 	int totallines=FSettings.LastSLine-FSettings.FirstSLine+1;
 	int x,u,y;
 	FILE *pp=NULL;
@@ -434,21 +559,20 @@ int SaveSnapshot(void)
 	if(!(compmem=(uint8 *)FCEU_malloc(compmemsize)))
 		return 0;
 
-	for(u=lastu;u<99999;u++)
+	for (u = lastu; u < 99999; ++u)
 	{
-		pp=FCEUD_UTF8fopen((fn=strdup(FCEU_MakeFName(FCEUMKF_SNAP,u,"png").c_str())),"rb");
+		pp=FCEUD_UTF8fopen(FCEU_MakeFName(FCEUMKF_SNAP,u,"png").c_str(),"rb");
 		if(pp==NULL) break;
 		fclose(pp);
 	}
+	lastu = u;
 
-	lastu=u;
-
-	if(!(pp=FCEUD_UTF8fopen(fn,"wb")))
+	if(!(pp=FCEUD_UTF8fopen(FCEU_MakeFName(FCEUMKF_SNAP,u,"png").c_str(),"wb")))
 	{
-		free(fn);
+		free(compmem);
 		return 0;
 	}
-	free(fn);
+
 	{
 		static uint8 header[8]={137,80,78,71,13,10,26,10};
 		if(fwrite(header,8,1,pp)!=1)
@@ -486,7 +610,7 @@ int SaveSnapshot(void)
 		uint8 *tmp=XBuf+FSettings.FirstSLine*256;
 		uint8 *dest,*mal,*mork;
 
-		if(!(mal=mork=dest=(uint8 *)malloc((totallines<<8)+totallines)))
+		if(!(mal=mork=dest=(uint8 *)FCEU_dmalloc((totallines<<8)+totallines)))
 			goto PNGerr;
 		//   mork=dest=XBuf;
 
@@ -495,7 +619,7 @@ int SaveSnapshot(void)
 			*dest=0;			// No filter.
 			dest++;
 			for(x=256;x;x--,tmp++,dest++)
-				*dest=*tmp; 	
+				*dest=*tmp;
 		}
 
 		if(compress(compmem,&compmemsize,mork,(totallines<<8)+totallines)!=Z_OK)
@@ -523,38 +647,144 @@ PNGerr:
 		fclose(pp);
 	return(0);
 }
-//TODO mbg - this needs to be implemented in a better way
-#ifdef SHOWFPS
+
+//overloaded SaveSnapshot for "Savesnapshot As" function
+int SaveSnapshot(char fileName[512])
+{
+	int totallines=FSettings.LastSLine-FSettings.FirstSLine+1;
+	int x,y;
+	FILE *pp=NULL;
+	uint8 *compmem=NULL;
+	uLongf compmemsize=totallines*263+12;
+
+	if(!(compmem=(uint8 *)FCEU_malloc(compmemsize)))
+		return 0;
+
+	if(!(pp=FCEUD_UTF8fopen(fileName,"wb")))
+	{
+		free(compmem);
+		return 0;
+	}
+
+	{
+		static uint8 header[8]={137,80,78,71,13,10,26,10};
+		if(fwrite(header,8,1,pp)!=1)
+			goto PNGerr;
+	}
+
+	{
+		uint8 chunko[13];
+
+		chunko[0]=chunko[1]=chunko[3]=0;
+		chunko[2]=0x1;			// Width of 256
+
+		chunko[4]=chunko[5]=chunko[6]=0;
+		chunko[7]=totallines;			// Height
+
+		chunko[8]=8;				// bit depth
+		chunko[9]=3;				// Color type; indexed 8-bit
+		chunko[10]=0;				// compression: deflate
+		chunko[11]=0;				// Basic adapative filter set(though none are used).
+		chunko[12]=0;				// No interlace.
+
+		if(!WritePNGChunk(pp,13,"IHDR",chunko))
+			goto PNGerr;
+	}
+
+	{
+		uint8 pdata[256*3];
+		for(x=0;x<256;x++)
+			FCEUD_GetPalette(x,pdata+x*3,pdata+x*3+1,pdata+x*3+2);
+		if(!WritePNGChunk(pp,256*3,"PLTE",pdata))
+			goto PNGerr;
+	}
+
+	{
+		uint8 *tmp=XBuf+FSettings.FirstSLine*256;
+		uint8 *dest,*mal,*mork;
+
+		if(!(mal=mork=dest=(uint8 *)FCEU_dmalloc((totallines<<8)+totallines)))
+			goto PNGerr;
+		//   mork=dest=XBuf;
+
+		for(y=0;y<totallines;y++)
+		{
+			*dest=0;			// No filter.
+			dest++;
+			for(x=256;x;x--,tmp++,dest++)
+				*dest=*tmp;
+		}
+
+		if(compress(compmem,&compmemsize,mork,(totallines<<8)+totallines)!=Z_OK)
+		{
+			if(mal) free(mal);
+			goto PNGerr;
+		}
+		if(mal) free(mal);
+		if(!WritePNGChunk(pp,compmemsize,"IDAT",compmem))
+			goto PNGerr;
+	}
+	if(!WritePNGChunk(pp,0,"IEND",0))
+		goto PNGerr;
+
+	free(compmem);
+	fclose(pp);
+
+	return 0;
+
+
+PNGerr:
+	if(compmem)
+		free(compmem);
+	if(pp)
+		fclose(pp);
+	return(0);
+}
+// called when another ROM is opened
+void ResetScreenshotsCounter()
+{
+	lastu = 0;
+}
+
 uint64 FCEUD_GetTime(void);
 uint64 FCEUD_GetTimeFreq(void);
- 
+bool Show_FPS = false;
+// Control whether the frames per second of the emulation is rendered.
+bool FCEUI_ShowFPS()
+{
+	return Show_FPS;
+}
+void FCEUI_SetShowFPS(bool showFPS)
+{
+	Show_FPS = showFPS;
+}
+void FCEUI_ToggleShowFPS()
+{
+	Show_FPS ^= 1;
+}
+
 static uint64 boop[60];
 static int boopcount = 0;
-
-extern int showfps;
-char fpsmsg[16];
 int currfps;
-//extern char fpsmsg[16];
 
 void ShowFPS(void)
-{ 
-   //if( !showfps ) return;
-
+{
+#ifdef DINGUX
+	extern int showfps; // in dingoo.cpp
+    extern int currfps;
+	if (!showfps)
+#else
+	if(Show_FPS == false)
+#endif
+		return;
 	uint64 da = FCEUD_GetTime() - boop[boopcount];
-	//char fpsmsg[16];
-	extern char fpsmsg[16];
-	extern int currfps;
+	char fpsmsg[16];
 	int booplimit = PAL?50:60;
 	boop[boopcount] = FCEUD_GetTime();
 
-	if( showfps ) sprintf(fpsmsg, "%2.0f",(double)booplimit / ((double)da / FCEUD_GetTimeFreq()));
-	currfps=(double)booplimit / ((double)da / FCEUD_GetTimeFreq());
-	//puts((uint8 *)fpsmsg);
-	if( showfps ) DrawTextTrans(ClipSidesOffset+XBuf + (256-8-8*8) + (FSettings.FirstSLine+4)*256,256,(uint8 *)fpsmsg,4);
-	//sprintf(fpsmsg, "%f",(double)booplimit / ((double)da / FCEUD_GetTimeFreq()));
-	//printf("%s",(uint8 *)fpsmsg);
-	//printf("%8.1f",fpsmsg);
+    currfps=(double)booplimit / ((double)da / FCEUD_GetTimeFreq());
+	sprintf(fpsmsg, "%.1f", (double)booplimit / ((double)da / FCEUD_GetTimeFreq()));
+	DrawTextTrans(XBuf + ((256 - ClipSidesOffset) - 40) + (FSettings.FirstSLine + 4) * 256, 256, (uint8*)fpsmsg, 0xA0);
 	// It's not averaging FPS over exactly 1 second, but it's close enough.
 	boopcount = (boopcount + 1) % booplimit;
 }
-#endif

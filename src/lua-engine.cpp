@@ -1,16 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-#include <zlib.h>
-#include <assert.h>
-#include <vector>
-#include <map>
-#include <string>
-#include <algorithm>
-#include <stdlib.h>
-#include <math.h>
-
 #ifdef __linux
 #include <unistd.h>
 #define SetCurrentDir chdir
@@ -18,7 +5,7 @@
 #include <sys/wait.h>
 #endif
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 #include <direct.h>
 #define SetCurrentDir _chdir
 #endif
@@ -26,6 +13,7 @@
 #include "types.h"
 #include "fceu.h"
 #include "video.h"
+#include "debug.h"
 #include "sound.h"
 #include "drawing.h"
 #include "state.h"
@@ -33,12 +21,11 @@
 #include "driver.h"
 #include "cheat.h"
 #include "x6502.h"
-#include "x6502abbrev.h"
 #include "utils/xstring.h"
 #include "utils/memory.h"
 #include "fceulua.h"
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 #include "drivers/win/common.h"
 #include "drivers/win/taseditor/selection.h"
 #include "drivers/win/taseditor/laglog.h"
@@ -48,13 +35,59 @@
 extern TASEDITOR_LUA taseditor_lua;
 #endif
 
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cctype>
+#include <cassert>
+#include <cstdlib>
+#include <cmath>
+#include <zlib.h>
+
+#include <vector>
+#include <map>
+#include <string>
+#include <algorithm>
+#include <bitset>
+
+#include "x6502abbrev.h"
+
+bool CheckLua()
+{
+#if defined(WIN32) && !defined(DINGUX)
+	HMODULE mod = LoadLibrary("lua51.dll");
+	if(!mod)
+	{
+		return false;
+	}
+	FreeLibrary(mod);
+	return true;
+#else
+	return true;
+#endif
+}
+
+bool DemandLua()
+{
+#if defined(WIN32) && !defined(DINGUX)
+	if(!CheckLua())
+	{
+		MessageBox(NULL, "lua51.dll was not found. Please get it into your PATH or in the same directory as fceux.exe", "FCEUX", MB_OK | MB_ICONERROR);
+		return false;
+	}
+	return true;
+#else
+	return true;
+#endif
+}
+
 extern "C"
 {
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
+#if defined(WIN32) && !defined(DINGUX)
 #include <lstate.h>
-#ifdef WIN32
 	int iuplua_open(lua_State * L);
 	int iupcontrolslua_open(lua_State * L);
 	int luaopen_winapi(lua_State * L);
@@ -81,7 +114,7 @@ extern "C"
  #endif
 #endif
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 extern void AddRecentLuaFile(const char *filename);
 #endif
 
@@ -122,7 +155,7 @@ static void(*info_print)(int uid, const char* str);
 static void(*info_onstart)(int uid);
 static void(*info_onstop)(int uid);
 static int info_uid;
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 extern HWND LuaConsoleHWnd;
 extern INT_PTR CALLBACK DlgLuaScriptDialog(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 extern void PrintToWindowConsole(int hDlgAsInt, const char* str);
@@ -244,7 +277,7 @@ static void FCEU_LuaOnStop()
 													//rather than returning it to normal, and turbo off.  Perhaps some flags and a FCEUD_GetEmulationSpeed function
 	turbo = false;
 	//FCEUD_TurboOff();
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	TaseditorDisableManualFunctionIfNeeded();
 #endif
 }
@@ -1131,7 +1164,7 @@ void CallRegisteredLuaSaveFunctions(int savestateNumber, LuaSaveData& saveData)
 				// This is grounds for trashing the function
 				lua_pushnil(L);
 				lua_setfield(L, LUA_REGISTRYINDEX, luaCallIDStrings[LUACALL_BEFORESAVE]);
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 				MessageBox(hAppWnd, lua_tostring(L, -1), "Lua Error in SAVE function", MB_OK);
 #else
 				fprintf(stderr, "Lua error in registersave function: %s\n", lua_tostring(L, -1));
@@ -1157,6 +1190,7 @@ void CallRegisteredLuaLoadFunctions(int savestateNumber, const LuaSaveData& save
 
 		if (lua_isfunction(L, -1))
 		{
+#if defined(WIN32) && !defined(DINGUX)
 			// since the scriptdata can be very expensive to load
 			// (e.g. the registered save function returned some huge tables)
 			// check the number of parameters the registered load function expects
@@ -1168,6 +1202,13 @@ void CallRegisteredLuaLoadFunctions(int savestateNumber, const LuaSaveData& save
 
 			lua_pushinteger(L, savestateNumber);
 			saveData.LoadRecord(L, LUA_DATARECORDKEY, numParamsExpected);
+#else
+			int prevGarbage = lua_gc(L, LUA_GCCOUNT, 0);
+
+			lua_pushinteger(L, savestateNumber);
+			saveData.LoadRecord(L, LUA_DATARECORDKEY, (unsigned int) -1);
+#endif
+
 			int n = lua_gettop(L) - 1;
 
 			int ret = lua_pcall(L, n, 0, 0);
@@ -1175,7 +1216,7 @@ void CallRegisteredLuaLoadFunctions(int savestateNumber, const LuaSaveData& save
 				// This is grounds for trashing the function
 				lua_pushnil(L);
 				lua_setfield(L, LUA_REGISTRYINDEX, luaCallIDStrings[LUACALL_AFTERLOAD]);
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 				MessageBox(hAppWnd, lua_tostring(L, -1), "Lua Error in LOAD function", MB_OK);
 #else
 				fprintf(stderr, "Lua error in registerload function: %s\n", lua_tostring(L, -1));
@@ -1200,8 +1241,16 @@ void CallRegisteredLuaLoadFunctions(int savestateNumber, const LuaSaveData& save
 }
 
 
-static int rom_readbyte(lua_State *L) {   lua_pushinteger(L, FCEU_ReadRomByte(luaL_checkinteger(L,1))); return 1; }
-static int rom_readbytesigned(lua_State *L) {   lua_pushinteger(L, (signed char)FCEU_ReadRomByte(luaL_checkinteger(L,1))); return 1; }
+static int rom_readbyte(lua_State *L) {
+	lua_pushinteger(L, FCEU_ReadRomByte(luaL_checkinteger(L,1)));
+	return 1;
+}
+
+static int rom_readbytesigned(lua_State *L) {
+	lua_pushinteger(L, (signed char)FCEU_ReadRomByte(luaL_checkinteger(L,1)));
+	return 1;
+}
+
 static int rom_gethash(lua_State *L) {
 	const char *type = luaL_checkstring(L, 1);
 	if(!type) lua_pushstring(L, "");
@@ -1209,8 +1258,45 @@ static int rom_gethash(lua_State *L) {
 	else lua_pushstring(L, "");
 	return 1;
 }
-static int memory_readbyte(lua_State *L) {   lua_pushinteger(L, FCEU_CheatGetByte(luaL_checkinteger(L,1))); return 1; }
-static int memory_writebyte(lua_State *L) {   FCEU_CheatSetByte(luaL_checkinteger(L,1), luaL_checkinteger(L,2)); return 0; }
+
+static int memory_readbyte(lua_State *L) {
+	lua_pushinteger(L, FCEU_CheatGetByte(luaL_checkinteger(L,1)));
+	return 1;
+}
+
+static int memory_readbytesigned(lua_State *L) {
+	signed char c = (signed char) FCEU_CheatGetByte(luaL_checkinteger(L,1));
+	lua_pushinteger(L, c);
+	return 1;
+}
+
+static int GetWord(lua_State *L, bool isSigned)
+{
+	// little endian, unless the high byte address is specified as a 2nd parameter
+	uint16 addressLow = luaL_checkinteger(L, 1);
+	uint16 addressHigh = addressLow + 1;
+	if (lua_type(L, 2) == LUA_TNUMBER)
+		addressHigh = luaL_checkinteger(L, 2);
+	uint16 result = FCEU_CheatGetByte(addressLow) | (FCEU_CheatGetByte(addressHigh) << 8);
+	return isSigned ? (int16)result : result;
+}
+
+static int memory_readword(lua_State *L)
+{
+	lua_pushinteger(L, GetWord(L, false));
+	return 1;
+}
+
+static int memory_readwordsigned(lua_State *L) {
+	lua_pushinteger(L, GetWord(L, true));
+	return 1;
+}
+
+static int memory_writebyte(lua_State *L) {
+	FCEU_CheatSetByte(luaL_checkinteger(L,1), luaL_checkinteger(L,2));
+	return 0;
+}
+
 static int memory_readbyterange(lua_State *L) {
 
 	int range_start = luaL_checkinteger(L,1);
@@ -1435,6 +1521,18 @@ static int tostring(lua_State *L)
 	return 1;
 }
 
+// tobitstring(int value)
+//
+//   Converts byte to binary string
+static int tobitstring(lua_State *L)
+{
+	std::bitset<8> bits (luaL_checkinteger(L, 1));
+	std::string temp = bits.to_string().insert(4, " ");
+	const char * result = temp.c_str();
+	lua_pushstring(L,result);
+	return 1;
+}
+
 // like rawToCString, but will check if the global Lua function tostring()
 // has been replaced with a custom function, and call that instead if so
 static const char* toCString(lua_State* L, int idx)
@@ -1646,7 +1744,7 @@ void HandleCallbackError(lua_State* L)
 		lua_setfield(L, LUA_REGISTRYINDEX, guiCallbackTable);
 
 		// Error?
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 		MessageBox( hAppWnd, lua_tostring(L,-1), "Lua run error", MB_OK | MB_ICONSTOP);
 #else
 		fprintf(stderr, "Lua thread bombed out: %s\n", lua_tostring(L,-1));
@@ -1887,7 +1985,7 @@ void TaseditorManualFunction()
 	CallRegisteredLuaFunctions(LUACALL_TASEDITOR_MANUAL);
 }
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 void TaseditorDisableManualFunctionIfNeeded()
 {
 	if (L)
@@ -1895,18 +1993,11 @@ void TaseditorDisableManualFunctionIfNeeded()
 		// check if LUACALL_TASEDITOR_MANUAL function is not nil
 		lua_getfield(L, LUA_REGISTRYINDEX, luaCallIDStrings[LUACALL_TASEDITOR_MANUAL]);
 		if (!lua_isfunction(L, -1))
-			taseditor_lua.DisableRunFunction();
+			taseditor_lua.disableRunFunction();
 		lua_pop(L, 1);
-	} else taseditor_lua.DisableRunFunction();
+	} else taseditor_lua.disableRunFunction();
 }
 #endif
-
-// Not for the signed versions though
-static int memory_readbytesigned(lua_State *L) {
-	signed char c = (signed char) FCEU_CheatGetByte(luaL_checkinteger(L,1));
-	lua_pushinteger(L, c);
-	return 1;
-}
 
 static int memory_registerHook(lua_State* L, LuaMemHookType hookType, int defaultSize)
 {
@@ -2016,7 +2107,7 @@ static int memory_registerexec(lua_State *L)
 
 //adelikat: table pulled from GENS.  credz nitsuja!
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 const char* s_keyToName[256] =
 {
 	NULL,
@@ -2130,7 +2221,7 @@ const char* s_keyToName[256] =
 static int input_get(lua_State *L) {
 	lua_newtable(L);
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	// keyboard and mouse button status
 	{
 		extern int EnableBackgroundInput;
@@ -2302,7 +2393,7 @@ static int joypad_getimmediate(lua_State *L)
 		luaL_error(L,"Invalid input port (valid range 1-4, specified %d)", which);
 	}
 	// Currently only supports Windows, sorry...
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	extern uint32 GetGamepadPressedImmediate();
 	uint8 buttons = GetGamepadPressedImmediate() >> ((which - 1) * 8);
 
@@ -2624,18 +2715,18 @@ int emu_framecount(lua_State *L) {
 	return 1;
 }
 
-//int emu.lagcount()
+// int emu.lagcount()
 //
-// Gets the current lag count
+//   Gets the current lag count
 int emu_lagcount(lua_State *L) {
 
 	lua_pushinteger(L, FCEUI_GetLagCount());
 	return 1;
 }
 
-//emu_lagged()
+// emu.lagged()
 //
-//Returns true if the game is currently on a lag frame
+//   Returns true if the game is currently on a lag frame
 int emu_lagged (lua_State *L) {
 
 	bool Lag_Frame = FCEUI_GetLagged();
@@ -2643,9 +2734,9 @@ int emu_lagged (lua_State *L) {
 	return 1;
 }
 
-//emu_setlagflag(bool value)
+// emu.setlagflag(bool value)
 //
-//Returns true if the game is currently on a lag frame
+//   Returns true if the game is currently on a lag frame
 int emu_setlagflag(lua_State *L)
 {
 	FCEUI_SetLagFlag(lua_toboolean(L, 1) == 1);
@@ -2660,7 +2751,7 @@ int emu_emulating(lua_State *L) {
 
 // string movie.mode()
 //
-// Returns "taseditor", "record", "playback", "finished" or nil
+//   Returns "taseditor", "record", "playback", "finished" or nil
 int movie_mode(lua_State *L)
 {
 	if (FCEUMOV_Mode(MOVIEMODE_TASEDITOR))
@@ -3086,7 +3177,7 @@ static int hex2int(lua_State *L, char c) {
 static const struct ColorMapping
 {
 	const char* name;
-	int value;
+	unsigned int value;
 }
 s_colorMapping [] =
 {
@@ -3781,7 +3872,7 @@ static void LuaDisplayString (const char *string, int y, int x, uint32 color, ui
 
 static uint8 FCEUFont[792] =
 {
-	6,  0,  0,  0,  0,  0,  0,  0,
+	6,  0,  0,  0,  0,  0,  0,  0,	// 0x20 - Spacebar
 	3, 64, 64, 64, 64, 64,  0, 64,
 	5, 80, 80, 80,  0,  0,  0,  0,
 	6, 80, 80,248, 80,248, 80, 80,
@@ -3797,7 +3888,7 @@ static uint8 FCEUFont[792] =
 	5,  0,  0,  0,240,  0,  0,  0,
 	3,  0,  0,  0,  0,  0,  0, 64,
 	5, 16, 16, 32, 32, 32, 64, 64,
-	6,112,136,136,136,136,136,112, //0
+	6,112,136,136,136,136,136,112,	// 0x30 - 0
 	6, 32, 96, 32, 32, 32, 32, 32,
 	6,112,136,  8, 48, 64,128,248,
 	6,112,136,  8, 48,  8,136,112,
@@ -3812,9 +3903,9 @@ static uint8 FCEUFont[792] =
 	4,  0, 32, 64,128, 64, 32,  0,
 	5,  0,  0,240,  0,240,  0,  0,
 	4,  0,128, 64, 32, 64,128,  0,
-	5,112,136,  8, 16, 32,  0, 32,
-	6,112,136,136,184,176,128,112,
-	6,112,136,136,248,136,136,136, //A
+	6,112,136,  8, 16, 32,  0, 32,	// 0x3F - ?
+	6,112,136,136,184,176,128,112,	// 0x40 - @
+	6,112,136,136,248,136,136,136,	// 0x41 - A
 	6,240,136,136,240,136,136,240,
 	6,112,136,128,128,128,136,112,
 	6,224,144,136,136,136,144,224,
@@ -3846,7 +3937,7 @@ static uint8 FCEUFont[792] =
 	4, 64,160,  0,  0,  0,  0,  0,
 	6,  0,  0,  0,  0,  0,  0,248,
 	3,128, 64,  0,  0,  0,  0,  0,
-	5,  0,  0, 96, 16,112,144,112, //a
+	5,  0,  0, 96, 16,112,144,112,	// 0x61 - a
 	5,128,128,224,144,144,144,224,
 	5,  0,  0,112,128,128,128,112,
 	5, 16, 16,112,144,144,144,112,
@@ -3943,11 +4034,13 @@ void LuaDrawTextTransWH(const char *str, size_t l, int &x, int y, uint32 color, 
 					gui_drawpixel_internal(x+x2, y+y2, backcolor);
 			}
 		}
+		/*
 		// shadows :P
 		if (diffy >= 7) for(int x2 = 0; x2 < wid; x2++)
 			gui_drawpixel_internal(x+x2, y+7, LUA_BUILD_PIXEL(defaultAlpha, 0, 0, 0));
 		if (*str == '\0' || *str == '\n') for(int y2 = 0; y2 < diffy; y2++)
 			gui_drawpixel_internal(x+wid, y+y2, LUA_BUILD_PIXEL(defaultAlpha, 0, 0, 0));
+		*/
 
 		x += wid;
 		len--;
@@ -4208,7 +4301,7 @@ static int sound_get(lua_State *L)
 	else
 		lua_pushnumber(L, nesVolumes[0]);
 	lua_setfield(L, -2, "volume");
-	freq = (39375000.0/352.0) / curfreq[0];
+	freq = (39375000.0/352.0) / (curfreq[0] + 1);
 	lua_pushnumber(L, freq);
 	lua_setfield(L, -2, "frequency");
 	lua_pushnumber(L, (log(freq / 440.0) * 12 / log(2.0)) + 69);
@@ -4229,7 +4322,7 @@ static int sound_get(lua_State *L)
 	else
 		lua_pushnumber(L, nesVolumes[1]);
 	lua_setfield(L, -2, "volume");
-	freq = (39375000.0/352.0) / curfreq[1];
+	freq = (39375000.0/352.0) / (curfreq[1] + 1);
 	lua_pushnumber(L, freq);
 	lua_setfield(L, -2, "frequency");
 	lua_pushnumber(L, (log(freq / 440.0) * 12 / log(2.0)) + 69);
@@ -4249,7 +4342,7 @@ static int sound_get(lua_State *L)
 		lua_pushnumber(L, 1.0);
 	lua_setfield(L, -2, "volume");
 	freqReg = PSG[0xa] | ((PSG[0xb] & 7) << 8);
-	freq = (39375000.0/704.0) / freqReg;
+	freq = (39375000.0/704.0) / (freqReg + 1);
 	lua_pushnumber(L, freq);
 	lua_setfield(L, -2, "frequency");
 	lua_pushnumber(L, (log(freq / 440.0) * 12 / log(2.0)) + 69);
@@ -4310,6 +4403,49 @@ static int sound_get(lua_State *L)
 	return 1;
 }
 
+// Debugger functions library
+
+// debugger.hitbreakpoint()
+static int debugger_hitbreakpoint(lua_State *L)
+{
+	break_asap = true;
+	return 0;
+}
+
+// debugger.getcyclescount()
+static int debugger_getcyclescount(lua_State *L)
+{
+	int64 counter_value = timestampbase + (uint64)timestamp - total_cycles_base;
+	if (counter_value < 0)	// sanity check
+	{
+		ResetDebugStatisticsCounters();
+		counter_value = 0;
+	}
+	lua_pushinteger(L, counter_value);
+	return 1;
+}
+
+// debugger.getinstructionscount()
+static int debugger_getinstructionscount(lua_State *L)
+{
+	lua_pushinteger(L, total_instructions);
+	return 1;
+}
+
+// debugger.resetcyclescount()
+static int debugger_resetcyclescount(lua_State *L)
+{
+	ResetCyclesCounter();
+	return 0;
+}
+
+// debugger.resetinstructionscount()
+static int debugger_resetinstructionscount(lua_State *L)
+{
+	ResetInstructionsCounter();
+	return 0;
+}
+
 // TAS Editor functions library
 
 // bool taseditor.registerauto()
@@ -4339,8 +4475,8 @@ static int taseditor_registermanual(lua_State *L)
 	lua_getfield(L, LUA_REGISTRYINDEX, luaCallIDStrings[LUACALL_TASEDITOR_MANUAL]);
 	lua_insert(L,1);
 	lua_setfield(L, LUA_REGISTRYINDEX, luaCallIDStrings[LUACALL_TASEDITOR_MANUAL]);
-#ifdef WIN32
-	taseditor_lua.EnableRunFunction(caption);
+#if defined(WIN32) && !defined(DINGUX)
+	taseditor_lua.enableRunFunction(caption);
 #endif
 	return 1;
 }
@@ -4348,7 +4484,7 @@ static int taseditor_registermanual(lua_State *L)
 // bool taseditor.engaged()
 static int taseditor_engaged(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	lua_pushboolean(L, taseditor_lua.engaged());
 #else
 	lua_pushboolean(L, false);
@@ -4359,7 +4495,7 @@ static int taseditor_engaged(lua_State *L)
 // bool taseditor.markedframe(int frame)
 static int taseditor_markedframe(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	lua_pushboolean(L, taseditor_lua.markedframe(luaL_checkinteger(L, 1)));
 #else
 	lua_pushboolean(L, false);
@@ -4370,7 +4506,7 @@ static int taseditor_markedframe(lua_State *L)
 // int taseditor.getmarker(int frame)
 static int taseditor_getmarker(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	lua_pushinteger(L, taseditor_lua.getmarker(luaL_checkinteger(L, 1)));
 #else
 	lua_pushinteger(L, -1);
@@ -4381,7 +4517,7 @@ static int taseditor_getmarker(lua_State *L)
 // int taseditor.setmarker(int frame)
 static int taseditor_setmarker(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	lua_pushinteger(L, taseditor_lua.setmarker(luaL_checkinteger(L, 1)));
 #else
 	lua_pushinteger(L, -1);
@@ -4392,7 +4528,7 @@ static int taseditor_setmarker(lua_State *L)
 // taseditor.removemarker(int frame)
 static int taseditor_removemarker(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	taseditor_lua.removemarker(luaL_checkinteger(L, 1));
 #endif
 	return 0;
@@ -4401,7 +4537,7 @@ static int taseditor_removemarker(lua_State *L)
 // string taseditor.getnote(int index)
 static int taseditor_getnote(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	lua_pushstring(L, taseditor_lua.getnote(luaL_checkinteger(L, 1)));
 #else
 	lua_pushnil(L);
@@ -4412,7 +4548,7 @@ static int taseditor_getnote(lua_State *L)
 // taseditor.setnote(int index, string newtext)
 static int taseditor_setnote(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	taseditor_lua.setnote(luaL_checkinteger(L, 1), luaL_checkstring(L, 2));
 #endif
 	return 0;
@@ -4421,7 +4557,7 @@ static int taseditor_setnote(lua_State *L)
 // int taseditor.getcurrentbranch()
 static int taseditor_getcurrentbranch(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	lua_pushinteger(L, taseditor_lua.getcurrentbranch());
 #else
 	lua_pushinteger(L, -1);
@@ -4432,7 +4568,7 @@ static int taseditor_getcurrentbranch(lua_State *L)
 // string taseditor.getrecordermode()
 static int taseditor_getrecordermode(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	lua_pushstring(L, taseditor_lua.getrecordermode());
 #else
 	lua_pushnil(L);
@@ -4443,7 +4579,7 @@ static int taseditor_getrecordermode(lua_State *L)
 // int taseditor.getsuperimpose()
 static int taseditor_getsuperimpose(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	lua_pushinteger(L, taseditor_lua.getsuperimpose());
 #else
 	lua_pushinteger(L, -1);
@@ -4454,7 +4590,7 @@ static int taseditor_getsuperimpose(lua_State *L)
 // int taseditor.getlostplayback()
 static int taseditor_getlostplayback(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	lua_pushinteger(L, taseditor_lua.getlostplayback());
 #else
 	lua_pushinteger(L, -1);
@@ -4465,7 +4601,7 @@ static int taseditor_getlostplayback(lua_State *L)
 // int taseditor.getplaybacktarget()
 static int taseditor_getplaybacktarget(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	lua_pushinteger(L, taseditor_lua.getplaybacktarget());
 #else
 	lua_pushinteger(L, -1);
@@ -4476,7 +4612,7 @@ static int taseditor_getplaybacktarget(lua_State *L)
 // taseditor.setplayback(int frame)
 static int taseditor_setplayback(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	taseditor_lua.setplayback(luaL_checkinteger(L, 1));
 #endif
 	return 0;
@@ -4485,7 +4621,7 @@ static int taseditor_setplayback(lua_State *L)
 // taseditor.stopseeking()
 static int taseditor_stopseeking(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	taseditor_lua.stopseeking();
 #endif
 	return 0;
@@ -4494,7 +4630,7 @@ static int taseditor_stopseeking(lua_State *L)
 // table taseditor.getselection()
 static int taseditor_getselection(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	// create temp vector and provide its reference to TAS Editor for filling the vector with data
 	std::vector<int> cur_set;
 	taseditor_lua.getselection(cur_set);
@@ -4520,7 +4656,7 @@ static int taseditor_getselection(lua_State *L)
 // taseditor.setselection(table new_set)
 static int taseditor_setselection(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	std::vector<int> cur_set;
 	// retrieve new_set data from table to vector
 	if (!lua_isnil(L, 1))
@@ -4545,7 +4681,7 @@ static int taseditor_setselection(lua_State *L)
 // int taseditor.getinput(int frame, int joypad)
 static int taseditor_getinput(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	lua_pushinteger(L, taseditor_lua.getinput(luaL_checkinteger(L, 1), luaL_checkinteger(L, 2)));
 #else
 	lua_pushinteger(L, -1);
@@ -4556,7 +4692,7 @@ static int taseditor_getinput(lua_State *L)
 // taseditor.submitinputchange(int frame, int joypad, int input)
 static int taseditor_submitinputchange(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	taseditor_lua.submitinputchange(luaL_checkinteger(L, 1), luaL_checkinteger(L, 2), luaL_checkinteger(L, 3));
 #endif
 	return 0;
@@ -4565,7 +4701,7 @@ static int taseditor_submitinputchange(lua_State *L)
 // taseditor.submitinsertframes(int frame, int joypad, int input)
 static int taseditor_submitinsertframes(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	taseditor_lua.submitinsertframes(luaL_checkinteger(L, 1), luaL_checkinteger(L, 2));
 #endif
 	return 0;
@@ -4574,7 +4710,7 @@ static int taseditor_submitinsertframes(lua_State *L)
 // taseditor.submitdeleteframes(int frame, int joypad, int input)
 static int taseditor_submitdeleteframes(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	taseditor_lua.submitdeleteframes(luaL_checkinteger(L, 1), luaL_checkinteger(L, 2));
 #endif
 	return 0;
@@ -4583,7 +4719,7 @@ static int taseditor_submitdeleteframes(lua_State *L)
 // int taseditor.applyinputchanges([string name])
 static int taseditor_applyinputchanges(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	if (lua_isnil(L, 1))
 	{
 		lua_pushinteger(L, taseditor_lua.applyinputchanges(""));
@@ -4604,7 +4740,7 @@ static int taseditor_applyinputchanges(lua_State *L)
 // taseditor.clearinputchanges()
 static int taseditor_clearinputchanges(lua_State *L)
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	taseditor_lua.clearinputchanges();
 #endif
 	return 0;
@@ -4644,7 +4780,7 @@ static int doPopup(lua_State *L, const char* deftype, const char* deficon) {
 	static const char * const titles [] = {"Notice", "Question", "Warning", "Error"};
 	const char* answer = "ok";
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	static const int etypes [] = {MB_OK, MB_YESNO, MB_YESNOCANCEL, MB_OKCANCEL, MB_ABORTRETRYIGNORE};
 	static const int eicons [] = {MB_ICONINFORMATION, MB_ICONQUESTION, MB_ICONWARNING, MB_ICONERROR};
 	//StopSound(); //mbg merge 7/27/08
@@ -4825,7 +4961,7 @@ use_console:
 }
 
 static int doOpenFilePopup(lua_State *L, bool saveFile) {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	char filename[PATH_MAX];
 	OPENFILENAME ofn;
 	ZeroMemory(&ofn, sizeof(OPENFILENAME));
@@ -5036,7 +5172,7 @@ bool luabitop_validate(lua_State *L) // originally named as luaopen_bit
   if (b != (UBits)1437217655L || BAD_SAR) {  /* Perform a simple self-test. */
     const char *msg = "compiled with incompatible luaconf.h";
 #ifdef LUA_NUMBER_DOUBLE
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
     if (b == (UBits)1610612736L)
       msg = "use D3DCREATE_FPU_PRESERVE with DirectX";
 #endif
@@ -5085,7 +5221,7 @@ static void FCEU_LuaHookFunction(lua_State *L, lua_Debug *dbg) {
 
 		int kill = 0;
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 		// Uh oh
                 //StopSound(); //mbg merge 7/23/08
 		int ret = MessageBox(hAppWnd, "The Lua script running has been running a long time. It may have gone crazy. Kill it?\n\n(No = don't check anymore either)", "Lua Script Gone Nuts?", MB_YESNO);
@@ -5137,7 +5273,7 @@ static int emu_exec_count(lua_State *L) {
 	return 1;
 }
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 static HANDLE readyEvent, goEvent;
 DWORD WINAPI emu_exec_time_proc(LPVOID lpParameter)
 {
@@ -5238,9 +5374,11 @@ static const struct luaL_reg memorylib [] = {
 
 	{"readbyte", memory_readbyte},
 	{"readbyterange", memory_readbyterange},
-	{"readbytesigned", memory_readbytesigned},
-	// alternate naming scheme for unsigned
-	{"readbyteunsigned", memory_readbyte},
+	{"readbytesigned", memory_readbytesigned},	
+	{"readbyteunsigned", memory_readbyte},	// alternate naming scheme for unsigned
+	{"readword", memory_readword},
+	{"readwordsigned", memory_readwordsigned},
+	{"readwordunsigned", memory_readword},	// alternate naming scheme for unsigned
 	{"writebyte", memory_writebyte},
 	{"getregister", memory_getregister},
 	{"setregister", memory_setregister},
@@ -5341,6 +5479,8 @@ static const struct luaL_reg guilib[] = {
 	{"box", gui_box},
 	{"text", gui_text},
 
+	{"parsecolor", gui_parsecolor},
+
 	{"savescreenshot",   gui_savescreenshot},
 	{"savescreenshotas", gui_savescreenshotas},
 	{"gdscreenshot", gui_gdscreenshot},
@@ -5368,6 +5508,16 @@ static const struct luaL_reg guilib[] = {
 static const struct luaL_reg soundlib[] = {
 
 	{"get", sound_get},
+	{NULL,NULL}
+};
+
+static const struct luaL_reg debuggerlib[] = {
+
+	{"hitbreakpoint", debugger_hitbreakpoint},
+	{"getcyclescount", debugger_getcyclescount},
+	{"getinstructionscount", debugger_getinstructionscount},
+	{"resetcyclescount", debugger_resetcyclescount},
+	{"resetinstructionscount", debugger_resetinstructionscount},
 	{NULL,NULL}
 };
 
@@ -5448,7 +5598,7 @@ void FCEU_LuaFrameBoundary()
 		lua_setfield(L, LUA_REGISTRYINDEX, frameAdvanceThread);
 
 		// Error?
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
                 //StopSound();//StopSound(); //mbg merge 7/23/08
 		MessageBox( hAppWnd, lua_tostring(thread,-1), "Lua run error", MB_OK | MB_ICONSTOP);
 #else
@@ -5478,6 +5628,11 @@ void FCEU_LuaFrameBoundary()
  * Returns true on success, false on failure.
  */
 int FCEU_LoadLuaCode(const char *filename, const char *arg) {
+	if (!DemandLua())
+	{
+		return 0;
+	}
+
 	if (filename != luaScriptName)
 	{
 		if (luaScriptName) free(luaScriptName);
@@ -5527,6 +5682,7 @@ int FCEU_LoadLuaCode(const char *filename, const char *arg) {
 		luaL_register(L, "movie", movielib);
 		luaL_register(L, "gui", guilib);
 		luaL_register(L, "sound", soundlib);
+		luaL_register(L, "debugger", debuggerlib);
 		luaL_register(L, "taseditor", taseditorlib);
 		luaL_register(L, "bit", bit_funcs); // LuaBitOp library
 		lua_settop(L, 0);		// clean the stack, because each call to luaL_register leaves a table on top
@@ -5534,6 +5690,7 @@ int FCEU_LoadLuaCode(const char *filename, const char *arg) {
 		// register a few utility functions outside of libraries (in the global namespace)
 		lua_register(L, "print", print);
 		lua_register(L, "tostring", tostring);
+		lua_register(L, "tobitstring", tobitstring);
 		lua_register(L, "addressof", addressof);
 		lua_register(L, "copytable", copytable);
 
@@ -5542,7 +5699,7 @@ int FCEU_LoadLuaCode(const char *filename, const char *arg) {
 		lua_register(L, "OR", bit_bor);
 		lua_register(L, "XOR", bit_bxor);
 		lua_register(L, "SHIFT", bit_bshift_emulua);
-		lua_register(L, "BIT", bitbit);
+		lua_register(L, "BIT", bitbit);		
 
 		if (arg)
 		{
@@ -5572,7 +5729,7 @@ int FCEU_LoadLuaCode(const char *filename, const char *arg) {
 	int result = luaL_loadfile(L,filename);
 
 	if (result) {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 		// Doing this here caused nasty problems; reverting to MessageBox-from-dialog behavior.
                 //StopSound();//StopSound(); //mbg merge 7/23/08
 		MessageBox(NULL, lua_tostring(L,-1), "Lua load error", MB_OK | MB_ICONSTOP);
@@ -5584,7 +5741,7 @@ int FCEU_LoadLuaCode(const char *filename, const char *arg) {
 		lua_settop(L,0);
 		return 0; // Oh shit.
 	}
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	AddRecentLuaFile(filename); //Add the filename to our recent lua menu
 #endif
 
@@ -5610,7 +5767,7 @@ int FCEU_LoadLuaCode(const char *filename, const char *arg) {
 	// Set up our protection hook to be executed once every 10,000 bytecode instructions.
 	//lua_sethook(thread, FCEU_LuaHookFunction, LUA_MASKCOUNT, 10000);
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 	info_print = PrintToWindowConsole;
 	info_onstart = WinLuaOnStart;
 	info_onstop = WinLuaOnStop;
@@ -5635,9 +5792,27 @@ int FCEU_LoadLuaCode(const char *filename, const char *arg) {
 void FCEU_ReloadLuaCode()
 {
 	if (!luaScriptName)
-		FCEU_DispMessage("There's no script to reload.",0);
-	else
+	{
+#if defined(WIN32) && !defined(DINGUX)
+		// no script currently running, then try loading the most recent 
+		extern char *recent_lua[];
+		char*& fname = recent_lua[0];
+		extern void UpdateLuaConsole(const char* fname);
+		if (fname)
+		{
+			UpdateLuaConsole(fname);
+			FCEU_LoadLuaCode(fname);
+		} else
+		{
+			FCEU_DispMessage("There's no script to reload.", 0);
+		}
+#else
+		FCEU_DispMessage("There's no script to reload.", 0);
+#endif
+	} else
+	{
 		FCEU_LoadLuaCode(luaScriptName);
+	}
 }
 
 
@@ -5648,6 +5823,9 @@ void FCEU_ReloadLuaCode()
  *
  */
 void FCEU_LuaStop() {
+
+	if (!CheckLua())
+		return;
 
 	//already killed
 	if (!L) return;
@@ -5671,7 +5849,7 @@ void FCEU_LuaStop() {
 
 	//sometimes iup uninitializes com
 	//MBG TODO - test whether this is really necessary. i dont think it is
-	#ifdef WIN32
+	#if defined(WIN32) && !defined(DINGUX)
 	CoInitialize(0);
 	#endif
 
@@ -5758,7 +5936,7 @@ void FCEU_LuaGui(uint8 *XBuf)
 		numTries = 1000;
 		int ret = lua_pcall(L, 0, 0, 0);
 		if (ret != 0) {
-#ifdef WIN32
+#if defined(WIN32) && !defined(DINGUX)
 			//StopSound();//StopSound(); //mbg merge 7/23/08
 			MessageBox(hAppWnd, lua_tostring(L, -1), "Lua Error in GUI function", MB_OK);
 #else

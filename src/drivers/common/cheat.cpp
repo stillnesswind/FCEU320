@@ -15,12 +15,13 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #include <stdio.h>
 #include <ctype.h>
 #include "../../driver.h"
+#include "../../fceu.h"
 
 static void GetString(char *s, int max)
 {
@@ -40,7 +41,7 @@ static uint32 GetH16(unsigned int def)
 {
  char buf[32];
 
- fgets(buf,32,stdin);
+ fgets(buf,ARRAY_SIZE(buf),stdin);
  if(buf[0]=='\n')
   return(def);
  if(buf[0]=='$')
@@ -55,7 +56,7 @@ static uint8 Get8(unsigned int def)
 {
  char buf[32];
 
- fgets(buf,32,stdin);
+ fgets(buf,ARRAY_SIZE(buf),stdin);
  if(buf[0]=='\n')
   return(def);
  sscanf(buf,"%u",&def);
@@ -66,7 +67,7 @@ static int GetI(int def)
 {
  char buf[32];
 
- fgets(buf,32,stdin);
+ fgets(buf,ARRAY_SIZE(buf),stdin);
  if(buf[0]=='\n')
   return(def);
  sscanf(buf,"%d",&def);
@@ -77,7 +78,7 @@ static int GetYN(int def)
 {
  char buf[32];
  printf("(Y/N)[%s]: ",def?"Y":"N");
- fgets(buf,32,stdin);
+ fgets(buf,ARRAY_SIZE(buf),stdin);
  if(buf[0]=='y' || buf[0]=='Y')
   return(1);
  if(buf[0]=='n' || buf[0]=='N')
@@ -113,7 +114,7 @@ int ListChoice(int hmm)
 
    tryagain:
    printf(" <'Enter' to continue, (S)top, or enter a number.> ");
-   fgets(buf,32,stdin);
+   fgets(buf,ARRAY_SIZE(buf),stdin);
    if(buf[0]=='s' || buf[0]=='S') return(-1);
    if(buf[0]=='\n') return(0);
    if(!sscanf(buf,"%d",&num))
@@ -127,7 +128,7 @@ int ListChoice(int hmm)
 
    tryagain2:
    printf(" <'Enter' to make no selection or enter a number.> ");
-   fgets(buf,32,stdin);
+   fgets(buf,ARRAY_SIZE(buf),stdin);
    if(buf[0]=='\n') return(0);
    if(!sscanf(buf,"%d",&num))
     return(0);
@@ -347,7 +348,7 @@ static void ListCheats(void)
  {
   char tmp[32];
   printf(" <(T)oggle status, (M)odify, or (D)elete this cheat.> ");
-  fgets(tmp,32,stdin);
+  fgets(tmp,ARRAY_SIZE(tmp),stdin);
   switch(tolower(tmp[0]))
   {
    case 't':ToggleCheat(which);
@@ -395,7 +396,7 @@ static int ShowShortList(char *moe[], int n, int def)
 {
  int x,c;
  int baa; //mbg merge 7/17/06 made to normal int
- char tmp[16];
+ char tmp[256];
 
  red:
  for(x=0;x<n;x++)
@@ -404,7 +405,7 @@ static int ShowShortList(char *moe[], int n, int def)
  clo:
 
  printf("\nSelection [%d]> ",def+1);
- fgets(tmp,256,stdin);
+ fgets(tmp,ARRAY_SIZE(tmp),stdin);
  if(tmp[0]=='\n')
   return def;
  c=tolower(tmp[0]);
@@ -421,20 +422,42 @@ static int ShowShortList(char *moe[], int n, int def)
  }
 }
 
+#define ASK_NONE 0
+#define ASK_V1 1
+#define ASK_V2 2
+
 static void DoSearch(void)
 {
  static int v1=0,v2=0;
  static int method=0;
- char *m[6]={"O==V1 && C==V2","O==V1 && |O-C|==V2","|O-C|==V2","O!=C","Value decreased","Value increased"};
+ char *m[9]={"O==V1 && C==V2",
+   "O==V1 && |O-C|==V2",
+   "|O-C|==V2",
+   "O!=C",
+   "C==V1",
+   "Value increased (O<C)",
+   "Value decreased (O>C)",
+   "Value increased by V2 (|C-O|==V2)",
+   "Value decreased by V2 (|O-C|==V2)"};
+ int av[9]={ASK_V1|ASK_V2,
+   ASK_V1|ASK_V2,
+   ASK_V2,
+   ASK_NONE,
+   ASK_V1,
+   ASK_NONE,
+   ASK_NONE,
+   ASK_V2,
+   ASK_V2};
+ 
  printf("\nSearch Filter:\n");
 
- method=ShowShortList(m,6,method);
- if(method<=1)
+ method=ShowShortList(m,9,method);
+ if(av[method]&ASK_V1)
  {
   printf("V1 [%03d]: ",v1);
   v1=Get8(v1);
  }
- if(method<=2)
+ if(av[method]&ASK_V2)
  {
   printf("V2 [%03d]: ",v2);
   v2=Get8(v2);
@@ -481,7 +504,7 @@ static void DoMenu(MENU *men)
 
   recommand:
   printf("Command> ");
-  fgets(buf,32,stdin);
+  fgets(buf,ARRAY_SIZE(buf),stdin);
   c=tolower(buf[0]);
   if(c=='\n')
    goto recommand;

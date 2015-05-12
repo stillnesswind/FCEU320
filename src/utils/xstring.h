@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 #include <string>
 #include <string.h>
@@ -24,6 +24,7 @@
 #include <iostream>
 
 #include "../types.h"
+#include "../emufile.h"
 
 #ifndef __GNUC__
 #define strcasecmp strcmp
@@ -56,23 +57,24 @@ uint16 FastStrToU16(char* s, bool& valid);
 char *U16ToDecStr(uint16 a);
 char *U32ToDecStr(uint32 a);
 char *U32ToDecStr(char* buf, uint32 a);
+char *U32ToDecStr(char* buf, uint32 a, int digits);
 char *U8ToDecStr(uint8 a);
 char *U8ToHexStr(uint8 a);
 char *U16ToHexStr(uint16 a);
 
 std::string stditoa(int n);
 
-std::string readNullTerminatedAscii(std::istream* is);
+std::string readNullTerminatedAscii(EMUFILE* is);
 
 //extracts a decimal uint from an istream
-template<typename T> T templateIntegerDecFromIstream(std::istream* is)
+template<typename T> T templateIntegerDecFromIstream(EMUFILE* is)
 {
 	unsigned int ret = 0;
 	bool pre = true;
 
 	for(;;)
 	{
-		int c = is->get();
+		int c = is->fgetc();
 		if(c == -1) return ret;
 		int d = c - '0';
 		if((d<0 || d>9))
@@ -91,29 +93,29 @@ template<typename T> T templateIntegerDecFromIstream(std::istream* is)
 	return ret;
 }
 
-inline uint32 uint32DecFromIstream(std::istream* is) { return templateIntegerDecFromIstream<uint32>(is); }
-inline uint64 uint64DecFromIstream(std::istream* is) { return templateIntegerDecFromIstream<uint64>(is); }
+inline uint32 uint32DecFromIstream(EMUFILE* is) { return templateIntegerDecFromIstream<uint32>(is); }
+inline uint64 uint64DecFromIstream(EMUFILE* is) { return templateIntegerDecFromIstream<uint64>(is); }
 
 //puts an optionally 0-padded decimal integer of type T into the ostream (0-padding is quicker)
-template<typename T, int DIGITS, bool PAD> void putdec(std::ostream* os, T dec)
+template<typename T, int DIGITS, bool PAD> void putdec(EMUFILE* os, T dec)
 {
 	char temp[DIGITS];
-	int ctr = 0;
-	for(int i=0;i<DIGITS;i++)
+	int ctr = 0;	// at least one char will always be outputted
+	for (int i = 0; i < DIGITS; ++i)
 	{
-		int quot = dec/10;
-		int rem = dec%10;
-		temp[DIGITS-1-i] = '0' + rem;
-		if(!PAD)
+		int remainder = dec % 10;
+		temp[(DIGITS - 1) - i] = '0' + remainder;
+		if (!PAD)
 		{
-			if(rem != 0) ctr = i;
+			if (remainder != 0)
+				ctr = i;
 		}
-		dec = quot;
+		dec /= 10;
 	}
-	if(!PAD)
-		os->write(temp+DIGITS-ctr-1,ctr+1);
+	if (!PAD)
+		os->fwrite(temp + (DIGITS - 1) - ctr, ctr + 1);
 	else
-		os->write(temp,DIGITS);
+		os->fwrite(temp, DIGITS);
 }
 
 std::string mass_replace(const std::string &source, const std::string &victim, const std::string &replacement);
@@ -125,3 +127,6 @@ std::string wcstombs(std::wstring str);
 
 //TODO - dont we already have another  function that can do this
 std::string getExtension(const char* input);
+
+std::string StripExtension(std::string filename);
+std::string StripPath(std::string filename);

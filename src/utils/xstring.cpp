@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 /// \file
@@ -62,24 +62,20 @@ int str_ltrim(char *str, int flags) {
 	unsigned int i=0; //mbg merge 7/17/06 changed to unsigned int
 
 	while (str[0]) {
-		if ((str[0] != ' ') || (str[0] != '\t') || (str[0] != '\r') || (str[0] != '\n')) break;
-
 		if ((flags & STRIP_SP) && (str[0] == ' ')) {
 			i++;
 			strcpy(str,str+1);
-		}
-		if ((flags & STRIP_TAB) && (str[0] == '\t')) {
+		} else if ((flags & STRIP_TAB) && (str[0] == '\t')) {
 			i++;
 			strcpy(str,str+1);
-		}
-		if ((flags & STRIP_CR) && (str[0] == '\r')) {
+		} else if ((flags & STRIP_CR) && (str[0] == '\r')) {
 			i++;
 			strcpy(str,str+1);
-		}
-		if ((flags & STRIP_LF) && (str[0] == '\n')) {
+		} else if ((flags & STRIP_LF) && (str[0] == '\n')) {
 			i++;
 			strcpy(str,str+1);
-		}
+		} else
+			break;
 	}
 	return i;
 }
@@ -90,30 +86,23 @@ int str_ltrim(char *str, int flags) {
 ///Removes whitespace from right side of string, depending on the flags set (See STRIP_x definitions in xstring.h)
 ///Returns number of characters removed
 int str_rtrim(char *str, int flags) {
-	unsigned int i=0; //mbg merge 7/17/06 changed to unsigned int
+	unsigned int i=0, strl; //mbg merge 7/17/06 changed to unsigned int
 
-	while (strlen(str)) {
-		if ((str[strlen(str)-1] != ' ') ||
-			(str[strlen(str)-1] != '\t') ||
-			(str[strlen(str)-1] != '\r') ||
-			(str[strlen(str)-1] != '\n')) break;
-
+	while (strl = strlen(str)) {
 		if ((flags & STRIP_SP) && (str[0] == ' ')) {
 			i++;
-			str[strlen(str)-1] = 0;
-		}
-		if ((flags & STRIP_TAB) && (str[0] == '\t')) {
+			str[strl] = 0;
+		} else if ((flags & STRIP_TAB) && (str[0] == '\t')) {
 			i++;
-			str[strlen(str)-1] = 0;
-		}
-		if ((flags & STRIP_CR) && (str[0] == '\r')) {
+			str[strl] = 0;
+		} else if ((flags & STRIP_CR) && (str[0] == '\r')) {
 			i++;
-			str[strlen(str)-1] = 0;
-		}
-		if ((flags & STRIP_LF) && (str[0] == '\n')) {
+			str[strl] = 0;
+		} else if ((flags & STRIP_LF) && (str[0] == '\n')) {
 			i++;
-			str[strlen(str)-1] = 0;
-		}
+			str[strl] = 0;
+		} else
+			break;
 	}
 	return i;
 }
@@ -441,7 +430,7 @@ void splitpath(const char* path, char* drv, char* dir, char* name, char* ext)
 		*name = '\0';
 	} else
 		for(s=p; s<end; )
-			*s++;
+			s++;
 
 	if (dir) {
 		for(s=path; s<p; )
@@ -526,6 +515,21 @@ char *U32ToDecStr(uint32 a)
 {
 	return U32ToDecStr(TempArray,a);
 }
+char *U32ToDecStr(char* buf, uint32 a, int digits)
+{
+	if (digits < 1)
+		digits = 1;
+	else if (digits > 10)
+		digits = 10;
+
+	for (int i = 1; i <= digits; ++i)
+	{
+		buf[digits - i] = '0' + (a % 10);
+		a /= 10;
+	}
+	buf[digits] = 0;
+	return buf;
+}
 
 char *U16ToHexStr(uint16 a)
 {
@@ -553,13 +557,13 @@ std::string stditoa(int n)
 }
 
 
-std::string readNullTerminatedAscii(std::istream* is)
+std::string readNullTerminatedAscii(EMUFILE* is)
 {
 	std::string ret;
 	ret.reserve(50);
 	for(;;) 
 	{
-		int c = is->get();
+		int c = is->fgetc();
 		if(c == 0) break;
 		else ret += (char)c;
 	}
@@ -624,7 +628,11 @@ namespace UtfConverter
         {
             throw std::exception();
         }
+#ifndef _GLIBCXX_USE_WCHAR_T
+        return "";
+#else
         return L"";
+#endif
     }
 
     std::string ToUtf8(const std::wstring& widestring)
@@ -749,8 +757,8 @@ std::wstring mbstowcs(std::string str) // UTF8->UTF32
 	try {
 		return UtfConverter::FromUtf8(str);
 	} catch(std::exception) {
-#ifdef DINGUX
-		return "(failed UTF-8 Conversion)";
+#ifndef _GLIBCXX_USE_WCHAR_T
+		return "(failed UTF-8 conversion)";
 #else
 		return L"(failed UTF-8 conversion)";
 #endif
@@ -777,4 +785,17 @@ std::string getExtension(const char* input) {
 	for(k=0;k<extlen;k++)
 		ext[k]=tolower(ext[k]);
 	return ext;
+}
+
+//strips the file extension off a filename
+std::string StripExtension(std::string filename)
+{
+	return filename.substr(0, filename.find_last_of("."));
+}
+
+//strips the path off a filename
+std::string StripPath(std::string filename)
+{
+	int x = filename.find_last_of("\\") + 1;
+	return filename.substr(x, filename.length() - x);
 }

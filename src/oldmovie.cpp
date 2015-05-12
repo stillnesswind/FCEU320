@@ -15,10 +15,10 @@ using namespace std;
 // FCM\x1a
 #define MOVIE_MAGIC             0x1a4d4346
 
-// still at 2 since the format itself is still compatible 
-// to detect which version the movie was made with, check the fceu version stored in the movie header 
+// still at 2 since the format itself is still compatible
+// to detect which version the movie was made with, check the fceu version stored in the movie header
 // (e.g against FCEU_VERSION_NUMERIC)
-#define MOVIE_VERSION           2 
+#define MOVIE_VERSION           2
 
 //-------
 //this is just supposed to be a comment describing the disk format
@@ -223,7 +223,7 @@ static void FCEUI_LoadMovie_v1(char *fname, int _read_only);
 //			}
 //
 //			//don't really load, just load to find what's there then load backup
-//			if(!FCEUSS_LoadFP(fp,SSLOADPARAM_DUMMY)) return 0; 
+//			if(!FCEUSS_LoadFP(fp,SSLOADPARAM_DUMMY)) return 0;
 //		}
 //
 //		fclose(fp);
@@ -350,7 +350,7 @@ uint16 metadata_ucs2[];     // ucs-2, ick!  sizeof(metadata) = offset_to_savesta
 //	framets=0;
 //	nextts=0;
 //	nextd = -1;
-//	FCEU_DispMessage("Movie playback started.");
+//	FCEU_DispMessage("Movie playback started.",0);
 //}
 //
 //static int FCEUI_MovieGetInfo_v1(const char* fname, MOVIE_INFO* info)
@@ -519,7 +519,7 @@ static void _addjoy()
 		// This fixes a bug in movies recorded before version 0.98.11
 		// It's probably not necessary, but it may keep away CRAZY PEOPLE who recorded
 		// movies on <= 0.98.10 and don't work on playback.
-		if(tmpfix == 1 && !nextts) 
+		if(tmpfix == 1 && !nextts)
 		{nextts |= movie_readchar()<<8; }
 		else if(tmpfix == 2 && !nextts) {nextts |= movie_readchar()<<16; }
 
@@ -542,11 +542,11 @@ EFCM_CONVERTRESULT convert_fcm(MovieData& md, std::string fname)
 	int movieConvertOffset1=0, movieConvertOffset2=0,movieSyncHackOn=0;
 
 
-	ifstream* fp = (ifstream*)FCEUD_UTF8_fstream(fname, "rb");
-	if(!fp) false;
+	EMUFILE* fp = FCEUD_UTF8_fstream(fname, "rb");
+	if(!fp) return FCM_CONVERTRESULT_FAILOPEN;
 
 	// read header
-	uint32 magic;
+	uint32 magic = 0;
 	uint32 version;
 	uint8 flags[4];
 
@@ -575,8 +575,8 @@ EFCM_CONVERTRESULT convert_fcm(MovieData& md, std::string fname)
 		return FCM_CONVERTRESULT_UNSUPPORTEDVERSION;
 	}
 
-	
-	fp->read((char*)&flags,4);
+
+	fp->fread((char*)&flags,4);
 	read32le(&framecount, fp);
 	read32le(&rerecord_count, fp);
 	read32le(&moviedatasize, fp);
@@ -584,13 +584,11 @@ EFCM_CONVERTRESULT convert_fcm(MovieData& md, std::string fname)
 	read32le(&firstframeoffset, fp);
 
 	//read header values
-	fp->read((char*)&md.romChecksum,16);
+	fp->fread((char*)&md.romChecksum,16);
 	read32le((uint32*)&md.emuVersion,fp);
 
-	md.romFilename = readNullTerminatedAscii(fp);
-
-#ifdef DINGUX
-    md.comments.push_back("author  " + mbstowcs(readNullTerminatedAscii(fp)));
+#ifndef _GLIBCXX_USE_WCHAR_T
+	md.comments.push_back("author  " + mbstowcs(readNullTerminatedAscii(fp)));
 #else
 	md.comments.push_back(L"author  " + mbstowcs(readNullTerminatedAscii(fp)));
 #endif
@@ -629,9 +627,9 @@ EFCM_CONVERTRESULT convert_fcm(MovieData& md, std::string fname)
 	//analyze input types?
 	//ResetInputTypes();
 
-	fp->seekg(firstframeoffset,ios::beg);
+	fp->fseek(firstframeoffset,SEEK_SET);
 	moviedata = (uint8*)realloc(moviedata, moviedatasize);
-	fp->read((char*)moviedata,moviedatasize);
+	fp->fread((char*)moviedata,moviedatasize);
 
 	frameptr = 0;
 	memset(joop,0,sizeof(joop));
